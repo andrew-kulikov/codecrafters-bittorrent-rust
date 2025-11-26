@@ -37,6 +37,11 @@ fn print_torrent_info(info: &serde_json::Value) {
     let encoded_info = bencode_encoder::encode(info_section);
     let info_hash = utils::compute_sha1_hash(&encoded_info);
 
+    let piece_length = info_section
+        .get("piece length")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
     let pieces_info_str = info_section
         .get("pieces")
         .and_then(|v| v.as_str())
@@ -47,6 +52,7 @@ fn print_torrent_info(info: &serde_json::Value) {
     println!("Tracker URL: {}", announce);
     println!("Length: {}", length);
     println!("Info Hash: {}", info_hash);
+    println!("Piece Length: {}", piece_length);
     println!("Piece Hashes:");
     for hash in piece_hashes {
         println!("{}", hash);
