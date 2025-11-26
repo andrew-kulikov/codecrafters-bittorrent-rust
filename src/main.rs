@@ -6,22 +6,96 @@ use std::env;
 
 #[allow(dead_code)]
 fn decode_bencoded_value(encoded_value: &str) -> serde_json::Value {
-    // If encoded_value starts with a digit, it's a number
-    let first_char = encoded_value.chars().next().unwrap();
-    if first_char.is_digit(10) {
-        // Example: "5:hello" -> "hello"
-        let colon_index = encoded_value.find(':').unwrap();
-        let number_string = &encoded_value[..colon_index];
-        let number = number_string.parse::<usize>().unwrap();
-        let string = &encoded_value[colon_index + 1..colon_index + 1 + number];
-        return serde_json::Value::String(string.to_string());
-    } else if first_char == 'i' {
-        let end_index = encoded_value.find('e').unwrap();
-        let number_string = &encoded_value[1..end_index];
-        let number = number_string.parse::<i64>().unwrap();
-        return serde_json::Value::Number(serde_json::Number::from(number));
-    } else {
-        panic!("Unhandled encoded value: {}", encoded_value)
+    let mut parser = BencodeParser::new(encoded_value);
+    let value = parser.parse_value();
+    parser.ensure_consumed();
+    value
+}
+
+struct BencodeParser<'a> {
+    input: &'a str,
+    index: usize,
+}
+
+impl<'a> BencodeParser<'a> {
+    fn new(input: &'a str) -> Self {
+        Self { input, index: 0 }
+    }
+
+    fn parse_value(&mut self) -> serde_json::Value {
+        match self.peek() {
+            Some('i') => self.parse_integer(),
+            Some('l') => self.parse_list(),
+            Some(c) if c.is_ascii_digit() => self.parse_string(),
+            Some(other) => panic!("Unhandled encoded prefix: {}", other),
+            None => panic!("Unexpected end of input"),
+        }
+    }
+
+    fn parse_string(&mut self) -> serde_json::Value {
+        let colon_offset = self.remaining_slice().find(':').expect("Missing ':' in string encoding");
+        let length_str = &self.remaining_slice()[..colon_offset];
+        let byte_length = length_str.parse::<usize>().expect("Invalid string length");
+        self.index += colon_offset + 1; // Skip length and ':'
+
+        if self.index + byte_length > self.input.len() {
+            panic!("String length exceeds input bounds");
+        }
+
+        let value = &self.input[self.index..self.index + byte_length];
+        self.index += byte_length;
+
+        serde_json::Value::String(value.to_string())
+    }
+
+    fn parse_integer(&mut self) -> serde_json::Value {
+        self.expect_char('i');
+        let end_offset = self.remaining_slice().find('e').expect("Missing 'e' terminator for integer");
+        let number_slice = &self.remaining_slice()[..end_offset];
+        let number = number_slice.parse::<i64>().expect("Invalid integer value");
+        self.index += end_offset + 1; // Consume digits and terminating 'e'
+
+        serde_json::Value::Number(serde_json::Number::from(number))
+    }
+
+    fn parse_list(&mut self) -> serde_json::Value {
+        self.expect_char('l');
+        let mut items = Vec::new();
+
+        loop {
+            match self.peek() {
+                Some('e') => {
+                    self.index += 1; // consume list terminator
+                    break;
+                }
+                Some(_) => items.push(self.parse_value()),
+                None => panic!("Unterminated list"),
+            }
+        }
+
+        serde_json::Value::Array(items)
+    }
+
+    fn ensure_consumed(&self) {
+        if self.index != self.input.len() {
+            panic!("Trailing data after parsing bencoded value");
+        }
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.remaining_slice().chars().next()
+    }
+
+    fn remaining_slice(&self) -> &str {
+        &self.input[self.index..]
+    }
+
+    fn expect_char(&mut self, expected: char) {
+        match self.peek() {
+            Some(c) if c == expected => self.index += expected.len_utf8(),
+            Some(other) => panic!("Expected '{}', found '{}'", expected, other),
+            None => panic!("Expected '{}', found end of input", expected),
+        }
     }
 }
 
