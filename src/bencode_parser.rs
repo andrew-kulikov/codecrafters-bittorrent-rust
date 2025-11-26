@@ -1,5 +1,7 @@
 use serde_json;
 
+use crate::utils;
+
 pub struct BencodeParser {
     input: Vec<u8>,
     index: usize,
@@ -41,8 +43,7 @@ impl BencodeParser {
             .iter()
             .position(|&b| b == b':')
             .expect("Missing ':' in string encoding");
-        let length_str =
-            std::str::from_utf8(&slice[..colon_offset]).expect("Invalid UTF-8 in string length");
+        let length_str = std::str::from_utf8(&slice[..colon_offset]).expect("Invalid UTF-8 in string length");
         let byte_length = length_str.parse::<usize>().expect("Invalid string length");
         self.index += colon_offset + 1; // Skip length and ':'
 
@@ -54,7 +55,9 @@ impl BencodeParser {
         let value = &self.input[self.index..end];
         self.index = end;
 
-        serde_json::Value::String(String::from_utf8_lossy(value).to_string())
+        // Use 1:1 byte-to-char mapping to preserve raw bytes
+        let s: String = utils::bytes_to_raw_string(value);
+        serde_json::Value::String(s)
     }
 
     fn parse_integer(&mut self) -> serde_json::Value {
