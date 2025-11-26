@@ -1,5 +1,5 @@
 use serde_json;
-use std::env;
+use std::{env, iter::Map};
 
 // Available if you need it!
 // use serde_bencode
@@ -26,6 +26,7 @@ impl<'a> BencodeParser<'a> {
         match self.peek() {
             Some('i') => self.parse_integer(),
             Some('l') => self.parse_list(),
+            Some('d') => self.parse_dictionary(),
             Some(c) if c.is_ascii_digit() => self.parse_string(),
             Some(other) => panic!("Unhandled encoded prefix: {}", other),
             None => panic!("Unexpected end of input"),
@@ -74,6 +75,31 @@ impl<'a> BencodeParser<'a> {
         }
 
         serde_json::Value::Array(items)
+    }
+
+    fn parse_dictionary(&mut self) -> serde_json::Value {
+        self.expect_char('d');
+        let mut items = serde_json::Map::new();
+
+        loop {
+            match self.peek() {
+                Some('e') => {
+                    self.index += 1; // consume dictionary terminator
+                    break;
+                }
+                Some(_) => {
+                     let key = match self.parse_value() {
+                        serde_json::Value::String(string_key) => string_key,
+                        _ => panic!("Dictionary keys must be strings"),
+                    };
+                    let value = self.parse_value();
+                    items.insert(key, value);
+                }
+                None => panic!("Unterminated dictionary"),
+            }
+        }
+
+        serde_json::Value::Object(items)
     }
 
     fn ensure_consumed(&self) {
