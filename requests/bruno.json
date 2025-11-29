@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Torrent",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}
