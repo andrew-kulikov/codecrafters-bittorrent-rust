@@ -2,8 +2,8 @@ use std::net::Ipv4Addr;
 
 use reqwest;
 
-use crate::bencode;
-use crate::utils::{self, RawBytesExt};
+use crate::utils::RawBytesExt;
+use crate::{bencode, utils};
 
 pub struct TrackerRequest {
     pub info_hash: Vec<u8>,
@@ -46,14 +46,9 @@ pub fn get_tracker(
         request.left,
         request.compact
     );
-    println!("Tracker URL: {}", url);
 
     let response = reqwest::blocking::get(&url)?.bytes()?;
-    let response_str = String::from_utf8_lossy(&response);
-    println!("Tracker Response: {}", response_str);
-
     let parsed_response = bencode::parse_bytes(response.to_vec());
-    println!("Parsed Response: {:?}", parsed_response);
 
     let result = TrackerResponse {
         interval: parsed_response
@@ -85,4 +80,30 @@ pub fn parse_peers(peers: &str) -> Vec<Peer> {
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::utils::RawStringExt;
+
+    use super::*;
+
+    #[test]
+    fn parse_peers_valid() {
+        let peers_bytes = b"\x7F\x00\x00\x01\x1A\xE1\xC0\xA8\x01\x68\x1A\xE2";
+        let peers = parse_peers(peers_bytes.to_raw_string().as_str());
+
+        assert_eq!(peers.len(), 2);
+        assert_eq!(peers[0].ip, Ipv4Addr::new(127, 0, 0, 1));
+        assert_eq!(peers[0].port, 6881);
+        assert_eq!(peers[1].ip, Ipv4Addr::new(192, 168, 1, 104));
+        assert_eq!(peers[1].port, 6882);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid peers binary string")]
+    fn parse_peers_panics_on_invalid_length() {
+        let peers_bytes = b"\x7F\x00\x00\x01\x1A";
+        parse_peers(peers_bytes.to_raw_string().as_str());
+    }
 }

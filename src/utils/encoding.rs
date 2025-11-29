@@ -1,35 +1,3 @@
-use sha1::{Digest, Sha1};
-
-/// Extension trait to convert a `&str` into raw bytes by casting each char to a single byte.
-///
-/// NOTE: This assumes a 1:1 mapping of `char` to byte (i.e. only ASCII). Multi-byte UTF-8
-/// characters will be truncated. Use `str::as_bytes()` if you need the real UTF-8 encoding.
-pub trait RawBytesExt {
-    fn to_raw_bytes(&self) -> Vec<u8>;
-}
-
-pub trait RawStringExt {
-    fn to_raw_string(&self) -> String;
-}
-
-impl RawStringExt for [u8] {
-    fn to_raw_string(&self) -> String {
-        self.iter().map(|&b| b as char).collect()
-    }
-}
-
-impl RawBytesExt for str {
-    fn to_raw_bytes(&self) -> Vec<u8> {
-        self.chars().map(|ch| ch as u8).collect()
-    }
-}
-
-pub fn compute_sha1_hash(data: &[u8]) -> Vec<u8> {
-    let mut hasher = Sha1::new();
-    hasher.update(data);
-    hasher.finalize().to_vec()
-}
-
 /// Percent-encode arbitrary bytes into a URL-safe string (RFC 3986).
 ///
 /// Unreserved characters (ALPHA / DIGIT / '-' / '.' / '_' / '~') are left as-is.
@@ -59,7 +27,7 @@ pub fn url_encode_bytes(bytes: &[u8]) -> String {
     out
 }
 
-pub fn url_encode(bytes: &Vec<u8>) -> String {
+pub fn url_encode(bytes: &[u8]) -> String {
     // In the worst case, every byte becomes "%XX" (3 chars)
     let mut out = String::with_capacity(bytes.len() * 3);
 
@@ -87,7 +55,7 @@ pub fn url_encode(bytes: &Vec<u8>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::url_encode_bytes;
+    use super::*;
 
     #[test]
     fn encodes_unreserved_as_is() {

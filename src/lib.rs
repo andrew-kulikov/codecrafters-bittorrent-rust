@@ -1,4 +1,4 @@
 pub mod bencode;
-pub mod client;
-pub mod torrrent_reader;
+pub mod torrent;
+pub mod tracker;
 pub mod utils;

@@ -1,19 +1,14 @@
 use std::env;
-use codecrafters_bittorrent::{bencode, client, torrrent_reader};
+use codecrafters_bittorrent::{bencode, torrent, tracker};
 
 // Available if you need it!
 // use serde_bencode
 
 fn print_peers(file_path: &str) {
-    let info = torrrent_reader::parse_torrent_file(file_path);
+    let info = torrent::parse_torrent_file(file_path);
 
-    for byte in &info.info_hash {
-        print!("{:02x} ", byte);
-    }
-    println!();
-    println!("Info Hash: {}", info.get_info_hash_hex());
     let peer_id = "-CT0001-123456789012".to_string(); // Example peer ID
-    let tracker_request = client::TrackerRequest {
+    let tracker_request = tracker::TrackerRequest {
         info_hash: info.info_hash.clone(),
         peer_id: peer_id.clone(),
         port: 6881,
@@ -23,17 +18,16 @@ fn print_peers(file_path: &str) {
         compact: 1,
     };
 
-    let tracker_response = client::get_tracker(info.announce, tracker_request)
+    let tracker_response = tracker::get_tracker(info.announce, tracker_request)
         .expect("Failed to get tracker response");
 
-    println!("Peers:");
     for peer in tracker_response.peers {
         println!("{}", peer);
     }
 }
 
 fn print_torrent_info(file_path: &str) {
-    let info = torrrent_reader::parse_torrent_file(file_path);
+    let info = torrent::parse_torrent_file(file_path);
 
     println!("Tracker URL: {}", info.announce);
     println!("Length: {}", info.length);

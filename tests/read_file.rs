@@ -1,4 +1,4 @@
-use codecrafters_bittorrent::torrrent_reader::parse_torrent_file;
+use codecrafters_bittorrent::torrent::parse_torrent_file;
 
 #[test]
 fn test_parse_torrent_file() {
