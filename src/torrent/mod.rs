@@ -1,6 +1,6 @@
 mod reader;
 
-pub struct TorrentMetadata {
+pub struct TorrentMetainfo {
     pub announce: String,
     // From "info" dictionary
     pub piece_length: u64,
@@ -10,4 +10,4 @@ pub struct TorrentMetadata {
     pub info_hash: Vec<u8>,
 }
 
-pub use reader::parse_torrent_file;
+pub use reader::parse_metainfo_file;

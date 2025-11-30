@@ -1,8 +1,8 @@
-use crate::torrent::TorrentMetadata;
+use crate::torrent::TorrentMetainfo;
 use crate::utils::RawBytesExt;
 use crate::{bencode, utils};
 
-impl TorrentMetadata {
+impl TorrentMetainfo {
     pub fn get_info_hash_hex(&self) -> String {
         hex::encode(&self.info_hash)
     }
@@ -17,7 +17,7 @@ impl TorrentMetadata {
     }
 }
 
-pub fn parse_torrent_file(file_path: &str) -> TorrentMetadata {
+pub fn parse_metainfo_file(file_path: &str) -> TorrentMetainfo {
     // Read file contents
     let torrent_bytes = std::fs::read(file_path).expect("Failed to read torrent file");
     let torrent_info = bencode::parse_bytes(torrent_bytes);
@@ -55,7 +55,7 @@ pub fn parse_torrent_file(file_path: &str) -> TorrentMetadata {
         utils::sha1(&encoded_info)
     };
 
-    TorrentMetadata {
+    TorrentMetainfo {
         announce,
         piece_length,
         pieces,

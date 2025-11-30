@@ -1,8 +1,8 @@
-use codecrafters_bittorrent::torrent::parse_torrent_file;
+use codecrafters_bittorrent::torrent::parse_metainfo_file;
 
 #[test]
 fn test_parse_torrent_file() {
-    let description = parse_torrent_file("sample.torrent");
+    let description = parse_metainfo_file("sample.torrent");
     let piece_hashes = description.get_piece_hashes();
 
     assert_eq!(
