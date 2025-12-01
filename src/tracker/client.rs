@@ -1,4 +1,5 @@
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr, ToSocketAddrs};
+use std::str::FromStr;
 
 use reqwest;
 
@@ -23,6 +24,26 @@ pub struct TrackerResponse {
 pub struct Peer {
     pub ip: Ipv4Addr,
     pub port: u16,
+}
+
+impl FromStr for Peer {
+    type Err = std::net::AddrParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split(':').collect();
+        let ip = parts[0].parse::<Ipv4Addr>()?;
+        let port = parts[1].parse::<u16>().unwrap_or(6881);
+        Ok(Peer { ip, port })
+    }
+}
+
+impl ToSocketAddrs for Peer {
+    type Iter = std::option::IntoIter<SocketAddr>;
+
+    fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
+        let socket_addr = SocketAddr::new(std::net::IpAddr::V4(self.ip), self.port);
+        Ok(Some(socket_addr).into_iter())
+    }
 }
 
 impl std::fmt::Display for Peer {
