@@ -50,6 +50,7 @@ impl PieceQueue {
 
     pub fn mark_completed(&self) {
         let mut completed = self.completed_pieces.lock().unwrap();
+        println!("[Queue] Completed pieces: {}/{}", *completed + 1, self.total_pieces);
         *completed += 1;
         if *completed == self.total_pieces {
             self.shutdown();
