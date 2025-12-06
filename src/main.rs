@@ -5,8 +5,7 @@ use codecrafters_bittorrent::{
 };
 use std::env;
 
-// Available if you need it!
-// use serde_bencode
+const PEER_ID: &str = "-CT0001-123456789012";
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -17,18 +16,24 @@ fn main() {
         let decoded_value = bencode::parse_string(encoded_value);
         println!("{}", decoded_value.to_string());
     } else if command == "info" {
+        // info <metainfo file>
         print_torrent_info(&args[2]);
     } else if command == "peers" {
+        // peers <metainfo file>
         request_tracker_peers(&args[2]);
     } else if command == "handshake" {
+        // handshake <metainfo file> <peer address>
         peer_handshake(&args[2], args[3].parse().expect("Invalid peer address"));
+    } else if command == "download_piece" {
+        // download_piece -o <output file> <metainfo file> <piece index>
+        download_piece(&args[3], &args[4], args[5].parse().expect("Invalid piece index"));
     } else {
         println!("unknown command: {}", args[1])
     }
 }
 
-fn print_torrent_info(file_path: &str) {
-    let info = torrent::parse_metainfo_file(file_path);
+fn print_torrent_info(metainfo_file_path: &str) {
+    let info = torrent::parse_metainfo_file(metainfo_file_path);
 
     println!("Tracker URL: {}", info.announce);
     println!("Length: {}", info.length);
@@ -40,13 +45,12 @@ fn print_torrent_info(file_path: &str) {
     }
 }
 
-fn request_tracker_peers(file_path: &str) {
-    let info = torrent::parse_metainfo_file(file_path);
+fn request_tracker_peers(metainfo_file_path: &str) {
+    let info = torrent::parse_metainfo_file(metainfo_file_path);
 
-    let peer_id = "-CT0001-123456789012".to_string(); // Example peer ID
     let tracker_request = tracker::TrackerRequest {
         info_hash: info.info_hash.clone(),
-        peer_id: peer_id.clone(),
+        peer_id: PEER_ID.to_string(),
         port: 6881,
         uploaded: 0,
         downloaded: 0,
@@ -54,23 +58,72 @@ fn request_tracker_peers(file_path: &str) {
         compact: 1,
     };
 
-    let tracker_response = tracker::get_tracker(info.announce, tracker_request)
-        .expect("Failed to get tracker response");
+    let tracker_response =
+        tracker::announce(info.announce, tracker_request).expect("Failed to get tracker response");
 
     for peer in tracker_response.peers {
         println!("{}", peer);
     }
 }
 
-fn peer_handshake(file_path: &str, peer: Peer) {
-    let meta = torrent::parse_metainfo_file(file_path);
+fn peer_handshake(metainfo_file_path: &str, peer: Peer) {
+    let meta = torrent::parse_metainfo_file(metainfo_file_path);
     let request = tracker::HandshakeRequest {
         pstr: "BitTorrent protocol".to_string(),
         reserved: [0u8; 8],
         info_hash: meta.info_hash.clone(),
-        peer_id: "-CT0001-123456789012".to_raw_bytes(),
+        peer_id: PEER_ID.to_raw_bytes(),
     };
-    let response = tracker::handshake(peer, &request).expect("Failed to complete handshake");
-    let peer_id_hex = hex::encode(&response.peer_id);
+    let connection = tracker::PeerConnection::new(peer.clone(), &request)
+        .expect("Failed to establish peer connection");
+    let peer_id_hex = hex::encode(&connection.peer_id.unwrap());
     println!("Peer ID: {}", peer_id_hex);
+}
+
+fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index: u32) {
+    // 1. Parse metainfo file
+    let meta = torrent::parse_metainfo_file(metainfo_file_path);
+    
+    // 2. Announce to tracker and get peers
+    let peers = {
+        let tracker_request = tracker::TrackerRequest {
+            info_hash: (&meta.info_hash).clone(),
+            peer_id: PEER_ID.to_string(),
+            port: 6881,
+            uploaded: 0,
+            downloaded: 0,
+            left: (&meta.length).clone(),
+            compact: 1,
+        };
+
+        let tracker_response = tracker::announce((&meta.announce).clone(), tracker_request)
+            .expect("Failed to get tracker response");
+        tracker_response.peers
+    };
+
+    // 3. Connect to first peer and perform handshake
+    let peer = peers
+        .first()
+        .expect("No peers available from tracker")
+        .clone();
+    let handshake_request = tracker::HandshakeRequest {
+        pstr: "BitTorrent protocol".to_string(),
+        reserved: [0u8; 8],
+        info_hash: meta.info_hash.clone(),
+        peer_id: PEER_ID.to_raw_bytes(),
+    };
+    let mut connection = tracker::PeerConnection::new(peer.clone(), &handshake_request)
+        .expect("Failed to establish peer connection");
+
+    // 4. Download piece
+    let piece_length: u32 = meta.piece_length.try_into().unwrap();
+    let mut output = vec![0u8; piece_length as usize];
+    connection
+        .download_piece(&meta, piece_index, &mut output)
+        .expect("Failed to download piece");
+
+    println!("Downloaded piece data (hex): {}", hex::encode(&output));
+
+    // 5. Write piece to file
+    std::fs::write(output_file_path, &output).expect("Failed to write piece to file");
 }

@@ -15,6 +15,12 @@ impl TorrentMetainfo {
         }
         piece_hashes
     }
+
+    pub fn get_piece_hash_bytes(&self, index: usize) -> &[u8] {
+        let start = index * 20;
+        let end = start + 20;
+        &self.pieces[start..end]
+    }
 }
 
 pub fn parse_metainfo_file(file_path: &str) -> TorrentMetainfo {

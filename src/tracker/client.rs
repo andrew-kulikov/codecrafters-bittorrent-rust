@@ -26,6 +26,15 @@ pub struct Peer {
     pub port: u16,
 }
 
+impl Clone for Peer {
+    fn clone(&self) -> Self {
+        Peer {
+            ip: self.ip,
+            port: self.port,
+        }
+    }
+}
+
 impl FromStr for Peer {
     type Err = std::net::AddrParseError;
 
@@ -52,7 +61,7 @@ impl std::fmt::Display for Peer {
     }
 }
 
-pub fn get_tracker(
+pub fn announce(
     announce_url: String,
     request: TrackerRequest,
 ) -> Result<TrackerResponse, Box<dyn std::error::Error>> {
