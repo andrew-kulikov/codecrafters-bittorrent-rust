@@ -94,9 +94,13 @@ impl PeerConnection {
         output: &mut [u8],
     ) -> anyhow::Result<()> {
         let piece_length: u32 = metainfo.piece_length.try_into().unwrap();
+        let output_len = output.len() as u32;
+        
         ensure!(
-            output.len() as u32 == piece_length,
-            "Output buffer length does not match piece length"
+            output_len <= piece_length,
+            "Output buffer length {} exceeds piece length {}",
+            output_len,
+            piece_length
         );
 
         // 1. Receive bitfield message
@@ -119,8 +123,8 @@ impl PeerConnection {
         let mut requests: Vec<PeerMessage> = Vec::new();
         let mut begin: u32 = 0;
 
-        while begin < piece_length {
-            let request_length = std::cmp::min(1 << 14, piece_length - begin);
+        while begin < output_len {
+            let request_length = std::cmp::min(1 << 14, output_len - begin);
             let mut payload = Vec::with_capacity(12);
             payload.extend_from_slice(&piece_index.to_be_bytes());
             payload.extend_from_slice(&begin.to_be_bytes());
