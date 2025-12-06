@@ -64,7 +64,7 @@ impl std::fmt::Display for Peer {
 pub fn announce(
     announce_url: String,
     request: TrackerRequest,
-) -> Result<TrackerResponse, Box<dyn std::error::Error>> {
+) -> anyhow::Result<TrackerResponse> {
     let url = format!(
         "{}?info_hash={}&peer_id={}&port={}&uploaded={}&downloaded={}&left={}&compact={}",
         announce_url,

@@ -1,8 +1,8 @@
 use codecrafters_bittorrent::{
-    bencode, torrent,
+    bencode,
+    download::{manager::DownloadManager, queue::PieceQueue, worker::PeerWorker},
+    peer, torrent,
     tracker::{self, Peer},
-    peer,
-    download::{queue::PieceQueue, peer_worker::PeerWorker},
     utils::RawBytesExt,
 };
 use std::env;
@@ -29,7 +29,14 @@ fn main() {
         peer_handshake(&args[2], args[3].parse().expect("Invalid peer address"));
     } else if command == "download_piece" {
         // download_piece -o <output file> <metainfo file> <piece index>
-        download_piece(&args[3], &args[4], args[5].parse().expect("Invalid piece index"));
+        download_piece(
+            &args[3],
+            &args[4],
+            args[5].parse().expect("Invalid piece index"),
+        );
+    } else if command == "download" {
+        // download -o <output file> <metainfo file>
+        download_file(&args[3], &args[4]);
     } else {
         println!("unknown command: {}", args[1])
     }
@@ -86,7 +93,7 @@ fn peer_handshake(metainfo_file_path: &str, peer: Peer) {
 fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index: u32) {
     // 1. Parse metainfo file
     let meta = Arc::new(torrent::parse_metainfo_file(metainfo_file_path));
-    
+
     // 2. Announce to tracker and get peers
     let peers = {
         let tracker_request = tracker::TrackerRequest {
@@ -112,10 +119,10 @@ fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index:
 
     // 4. Start worker
     let peer = peers.first().expect("No peers available").clone();
-    
+
     // Use current directory as temp output
     let output_dir = ".";
-    
+
     let mut worker = PeerWorker::new(
         peer,
         meta.clone(),
@@ -123,10 +130,17 @@ fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index:
         PEER_ID.to_string(),
         output_dir.to_string(),
     );
-    
+
     worker.run().expect("Worker failed");
 
     // 5. Move/Rename file to desired output
     let temp_path = format!("piece_{}", piece_index);
     std::fs::rename(temp_path, output_file_path).expect("Failed to rename output file");
+}
+
+fn download_file(output_file_path: &str, metainfo_file_path: &str) {
+    let meta = torrent::parse_metainfo_file(metainfo_file_path);
+    let client_id = PEER_ID.to_string();
+    let manager = DownloadManager::new(meta, client_id, output_file_path.to_string());
+    manager.download().expect("Download failed");
 }

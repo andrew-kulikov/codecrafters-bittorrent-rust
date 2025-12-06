@@ -6,6 +6,8 @@ pub struct PieceQueue {
     queue: Mutex<VecDeque<u32>>,
     cond: Condvar,
     finished: Mutex<bool>,
+    total_pieces: u32,
+    completed_pieces: Mutex<u32>,
 }
 
 impl PieceQueue {
@@ -18,15 +20,13 @@ impl PieceQueue {
             queue: Mutex::new(queue),
             cond: Condvar::new(),
             finished: Mutex::new(false),
+            total_pieces: piece_count,
+            completed_pieces: Mutex::new(0),
         }
     }
 
     pub fn empty() -> Self {
-        Self {
-            queue: Mutex::new(VecDeque::new()),
-            cond: Condvar::new(),
-            finished: Mutex::new(false),
-        }
+        Self::new(0)
     }
 
     pub fn pop(&self) -> Option<u32> {
@@ -48,6 +48,14 @@ impl PieceQueue {
         self.cond.notify_one();
     }
 
+    pub fn mark_completed(&self) {
+        let mut completed = self.completed_pieces.lock().unwrap();
+        *completed += 1;
+        if *completed == self.total_pieces {
+            self.shutdown();
+        }
+    }
+
     pub fn shutdown(&self) {
         let mut finished = self.finished.lock().unwrap();
         *finished = true;
@@ -56,5 +64,12 @@ impl PieceQueue {
 
     pub fn is_shutdown(&self) -> bool {
         *self.finished.lock().unwrap()
+    }
+    
+    pub fn wait_until_finished(&self) {
+        let mut finished = self.finished.lock().unwrap();
+        while !*finished {
+            finished = self.cond.wait(finished).unwrap();
+        }
     }
 }

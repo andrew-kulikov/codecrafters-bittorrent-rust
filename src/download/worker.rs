@@ -76,6 +76,8 @@ impl PeerWorker {
                         if let Err(e) = std::fs::write(path, &buffer) {
                             eprintln!("Failed to write piece {}: {}", piece_index, e);
                             self.queue.push(piece_index);
+                        } else {
+                            self.queue.mark_completed();
                         }
                     }
                     Err(e) => {
