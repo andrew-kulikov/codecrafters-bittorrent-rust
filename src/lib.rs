@@ -1,4 +1,6 @@
 pub mod bencode;
+pub mod download;
+pub mod peer;
 pub mod torrent;
 pub mod tracker;
 pub mod utils;

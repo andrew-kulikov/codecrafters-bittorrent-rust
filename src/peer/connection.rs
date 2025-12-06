@@ -5,45 +5,12 @@ use anyhow::ensure;
 
 use crate::torrent::TorrentMetainfo;
 use crate::tracker::Peer;
-use crate::utils::{RawBytesExt, RawStringExt, hash};
+use crate::utils::{RawStringExt, hash};
+use super::message::{PeerMessage, PeerMessageType, HandshakeRequest};
 
 pub struct PeerConnection {
     pub stream: TcpStream,
     pub peer_id: Option<Vec<u8>>,
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-enum PeerMessageType {
-    KeepAlive = -1,
-    Choke = 0,
-    Unchoke = 1,
-    Interested = 2,
-    NotInterested = 3,
-    Have = 4,
-    Bitfield = 5,
-    Request = 6,
-    Piece = 7,
-    Cancel = 8,
-}
-
-struct PeerMessage {
-    len: u32,
-    msg_type: PeerMessageType,
-    payload: Vec<u8>,
-}
-
-pub struct HandshakeRequest {
-    pub pstr: String,
-    pub reserved: [u8; 8],
-    pub info_hash: Vec<u8>,
-    pub peer_id: Vec<u8>,
-}
-
-pub struct HandshakeResponse {
-    pub pstr: String,
-    pub reserved: [u8; 8],
-    pub info_hash: Vec<u8>,
-    pub peer_id: Vec<u8>,
 }
 
 impl PeerConnection {
@@ -52,7 +19,7 @@ impl PeerConnection {
 
         // Handshake format:
         // <pstrlen><pstr><reserved><info_hash><peer_id>
-        let payload = build_handshake_bytes(req)?;
+        let payload = req.as_bytes()?;
         stream.write_all(&payload)?;
 
         // Response is also 1 + pstrlen + len(pstr) + 8 + 20 + 20
@@ -249,28 +216,4 @@ impl PeerConnection {
         self.stream.write_all(&buf)?;
         Ok(())
     }
-}
-
-fn build_handshake_bytes(req: &HandshakeRequest) -> anyhow::Result<Vec<u8>> {
-    // BitTorrent handshake format:
-    // <pstrlen><pstr><reserved><info_hash><peer_id>
-    // pstr typically "BitTorrent protocol"
-    let pstr_bytes = req.pstr.to_raw_bytes();
-    if pstr_bytes.len() > u8::MAX as usize {
-        anyhow::bail!("pstr too long");
-    }
-    if req.info_hash.len() != 20 {
-        anyhow::bail!("info_hash must be 20 bytes");
-    }
-    if req.peer_id.len() != 20 {
-        anyhow::bail!("peer_id must be 20 bytes");
-    }
-
-    let mut buf = Vec::with_capacity(1 + pstr_bytes.len() + 8 + 20 + 20);
-    buf.push(pstr_bytes.len() as u8);
-    buf.extend_from_slice(&pstr_bytes);
-    buf.extend_from_slice(&req.reserved);
-    buf.extend_from_slice(&req.info_hash);
-    buf.extend_from_slice(&req.peer_id);
-    Ok(buf)
 }
