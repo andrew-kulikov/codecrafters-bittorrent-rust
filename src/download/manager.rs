@@ -39,11 +39,10 @@ impl DownloadManager {
 
         let tracker_response = tracker::announce(self.metainfo.announce.clone(), tracker_request)?;
         let peers = tracker_response.peers;
-        println!("Found {} peers", peers.len());
+        println!("[DownloadManager] Found {} peers", peers.len());
 
-        let piece_length = self.metainfo.piece_length;
-        let total_length = self.metainfo.length;
-        let num_pieces = (total_length + piece_length - 1) / piece_length;
+        let num_pieces = self.metainfo.get_piece_count() as u64;
+        println!("[DownloadManager] Total pieces to download: {}", num_pieces);
 
         let queue = Arc::new(PieceQueue::new(num_pieces as u32));
 

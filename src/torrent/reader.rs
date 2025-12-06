@@ -7,6 +7,10 @@ impl TorrentMetainfo {
         hex::encode(&self.info_hash)
     }
 
+    pub fn get_piece_count(&self) -> usize {
+        self.pieces.len() / 20
+    }
+
     pub fn get_piece_hashes(&self) -> Vec<String> {
         let mut piece_hashes = Vec::new();
         for chunk in self.pieces.chunks(20) {
