@@ -53,6 +53,8 @@ impl PeerWorker {
                 }
             };
 
+            connection.init()?;
+
             while let Some(piece_index) = self.queue.pop() {
                 let total_length = self.metainfo.length;
                 let piece_len = self.metainfo.piece_length;
@@ -91,8 +93,7 @@ impl PeerWorker {
                     Err(e) => {
                         self.log(&format!("Failed to download piece {}: {}", piece_index, e));
                         self.queue.push(piece_index); // Return to queue
-                                                      // Break inner loop to reconnect
-                        break;
+                        break; // Break to reconnect
                     }
                 }
             }

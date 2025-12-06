@@ -54,22 +54,7 @@ impl PeerConnection {
         })
     }
 
-    pub fn download_piece(
-        &mut self,
-        metainfo: &TorrentMetainfo,
-        piece_index: u32,
-        output: &mut [u8],
-    ) -> anyhow::Result<()> {
-        let piece_length: u32 = metainfo.piece_length.try_into().unwrap();
-        let output_len = output.len() as u32;
-        
-        ensure!(
-            output_len <= piece_length,
-            "Output buffer length {} exceeds piece length {}",
-            output_len,
-            piece_length
-        );
-
+    pub fn init(&mut self) -> anyhow::Result<()> {
         // 1. Receive bitfield message
         // TODO: Decode available pieces from bitfield.payload
         self.read_message_exact(PeerMessageType::Bitfield)?;
@@ -86,7 +71,26 @@ impl PeerConnection {
         // TODO: Handle choke/unchoke state properly
         self.read_message_exact(PeerMessageType::Unchoke)?;
 
-        // 4. Request piece by blocks
+        Ok(())
+    }
+
+    pub fn download_piece(
+        &mut self,
+        metainfo: &TorrentMetainfo,
+        piece_index: u32,
+        output: &mut [u8],
+    ) -> anyhow::Result<()> {
+        let piece_length: u32 = metainfo.piece_length.try_into().unwrap();
+        let output_len = output.len() as u32;
+        
+        ensure!(
+            output_len <= piece_length,
+            "Output buffer length {} exceeds piece length {}",
+            output_len,
+            piece_length
+        );
+
+        // Request piece by blocks
         let mut requests: Vec<PeerMessage> = Vec::new();
         let mut begin: u32 = 0;
 
@@ -122,7 +126,7 @@ impl PeerConnection {
                 .copy_from_slice(&piece_msg.payload[8..]);
         }
 
-        // 5. Validate piece hash
+        // Validate piece hash
         let piece_hash = (&metainfo).get_piece_hash_bytes(piece_index as usize);
         let downloaded_piece_hash = hash::sha1(output);
         ensure!(
@@ -131,6 +135,7 @@ impl PeerConnection {
             piece_index
         );
         println!("Piece {} downloaded and verified successfully", piece_index);
+
         Ok(())
     }
 
