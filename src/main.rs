@@ -117,12 +117,18 @@ fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index:
 
     // 4. Download piece
     let piece_length: u32 = meta.piece_length.try_into().unwrap();
-    let mut output = vec![0u8; piece_length as usize];
+    let num_pieces = (meta.length as u32 + piece_length - 1) / piece_length;
+    let actual_piece_length = if piece_index == num_pieces - 1 {
+        // Last piece may be smaller
+        ((meta.length as u32) % piece_length) as usize
+    } else {
+        piece_length as usize
+    };
+    
+    let mut output = vec![0u8; actual_piece_length];
     connection
         .download_piece(&meta, piece_index, &mut output)
         .expect("Failed to download piece");
-
-    println!("Downloaded piece data (hex): {}", hex::encode(&output));
 
     // 5. Write piece to file
     std::fs::write(output_file_path, &output).expect("Failed to write piece to file");
