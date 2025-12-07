@@ -27,7 +27,32 @@ pub struct HandshakeRequest {
     pub peer_id: Vec<u8>,
 }
 
+pub struct HandshakeResponse {
+    pub pstr: String,
+    pub reserved: [u8; 8],
+    pub info_hash: Vec<u8>,
+    pub peer_id: Vec<u8>,
+}
+
 impl HandshakeRequest {
+    pub fn new(info_hash: Vec<u8>, peer_id: Vec<u8>) -> Self {
+        Self {
+            pstr: "BitTorrent protocol".to_string(),
+            reserved: [0u8; 8],
+            info_hash,
+            peer_id,
+        }
+    }
+
+    pub fn new_with_extension_support(info_hash: Vec<u8>, peer_id: Vec<u8>) -> Self {
+        Self {
+            pstr: "BitTorrent protocol".to_string(),
+            reserved: get_reserved_extension_support_bytes(),
+            info_hash,
+            peer_id,
+        }
+    }
+
     pub fn as_bytes(&self) -> anyhow::Result<Vec<u8>> {
         // BitTorrent handshake format:
         // <pstrlen><pstr><reserved><info_hash><peer_id>
@@ -53,9 +78,19 @@ impl HandshakeRequest {
     }
 }
 
-pub struct HandshakeResponse {
-    pub pstr: String,
-    pub reserved: [u8; 8],
-    pub info_hash: Vec<u8>,
-    pub peer_id: Vec<u8>,
+fn get_reserved_extension_support_bytes() -> [u8; 8] {
+    // Set extension protocol support bit (BEP-10)
+    let mut reserved = [0u8; 8];
+    reserved[5] |= 0b0001_0000;
+    reserved
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn get_reserved_bytes() {
+        let reserved = super::get_reserved_extension_support_bytes();
+        let hex_reserved = hex::encode(&reserved);
+        assert_eq!(hex_reserved, "0000000000100000");
+    }
 }

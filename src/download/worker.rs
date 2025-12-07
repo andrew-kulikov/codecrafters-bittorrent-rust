@@ -33,13 +33,11 @@ impl PeerWorker {
     pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
             println!("Worker connecting to {}", self.peer);
-
-            let handshake_req = HandshakeRequest {
-                pstr: "BitTorrent protocol".to_string(),
-                reserved: [0u8; 8],
-                info_hash: self.metainfo.info_hash.clone(),
-                peer_id: self.client_id.to_raw_bytes(),
-            };
+            
+            let handshake_req = HandshakeRequest::new(
+                self.metainfo.info_hash.clone(),
+                self.client_id.to_raw_bytes(),
+            );
 
             let mut connection = match PeerConnection::new(self.peer.clone(), &handshake_req) {
                 Ok(conn) => {

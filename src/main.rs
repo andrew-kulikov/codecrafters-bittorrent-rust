@@ -1,8 +1,8 @@
 use codecrafters_bittorrent::{
     bencode,
     download::{manager::DownloadManager, queue::PieceQueue, worker::PeerWorker},
-    peer,
-    torrent::{self, MagnetLink},
+    peer::{HandshakeRequest, PeerConnection},
+    torrent::{MagnetLink, TorrentMetainfo},
     tracker::{self, Peer},
     utils::RawBytesExt,
 };
@@ -17,9 +17,7 @@ fn main() {
 
     if command == "decode" {
         // decode <bencoded string>
-        let encoded_value = &args[2];
-        let decoded_value = bencode::parse_string(encoded_value);
-        println!("{}", decoded_value.to_string());
+        decode_bencoded_string(&args[2]);
     } else if command == "info" {
         // info <metainfo file>
         print_torrent_info(&args[2]);
@@ -42,13 +40,29 @@ fn main() {
     } else if command == "magnet_parse" {
         // magnet_parse <magnet link>
         parse_magnet_link(&args[2]);
+    } else if command == "magnet_handshake" {
+        // magnet_handshake <magnet link>
+        magnet_handshake(&args[2]);
+        
     } else {
         println!("unknown command: {}", args[1])
     }
 }
 
+/// task 1: Decode bencoded string
+/// task 2: Decode bencoded integers
+/// task 3: Decode bencoded lists
+/// task 4: Decode bencoded dictionaries
+fn decode_bencoded_string(encoded_value: &str) {
+    let decoded_value = bencode::parse_string(encoded_value);
+    println!("{}", decoded_value.to_string());
+}
+
+/// task 5: Parse torrent file
+/// task 6: Calculate info hash
+/// task 7: Piece hashes
 fn print_torrent_info(metainfo_file_path: &str) {
-    let info = torrent::parse_metainfo_file(metainfo_file_path);
+    let info = TorrentMetainfo::parse(metainfo_file_path);
 
     println!("Tracker URL: {}", info.announce);
     println!("Length: {}", info.length);
@@ -60,8 +74,9 @@ fn print_torrent_info(metainfo_file_path: &str) {
     }
 }
 
+/// task 8: Discover peers
 fn request_tracker_peers(metainfo_file_path: &str) {
-    let info = torrent::parse_metainfo_file(metainfo_file_path);
+    let info = TorrentMetainfo::parse(metainfo_file_path);
 
     let tracker_request = tracker::TrackerRequest {
         info_hash: info.info_hash.clone(),
@@ -81,23 +96,20 @@ fn request_tracker_peers(metainfo_file_path: &str) {
     }
 }
 
+/// task 9: Peer handshake
 fn peer_handshake(metainfo_file_path: &str, peer: Peer) {
-    let meta = torrent::parse_metainfo_file(metainfo_file_path);
-    let request = peer::HandshakeRequest {
-        pstr: "BitTorrent protocol".to_string(),
-        reserved: [0u8; 8],
-        info_hash: meta.info_hash.clone(),
-        peer_id: PEER_ID.to_raw_bytes(),
-    };
-    let connection = peer::PeerConnection::new(peer.clone(), &request)
-        .expect("Failed to establish peer connection");
+    let meta = TorrentMetainfo::parse(metainfo_file_path);
+    let request = HandshakeRequest::new(meta.info_hash.clone(), PEER_ID.to_raw_bytes());
+    let connection =
+        PeerConnection::new(peer.clone(), &request).expect("Failed to establish peer connection");
     let peer_id_hex = hex::encode(&connection.peer_id.unwrap());
     println!("Peer ID: {}", peer_id_hex);
 }
 
+/// task 10: Download a piece
 fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index: u32) {
     // 1. Parse metainfo file
-    let meta = Arc::new(torrent::parse_metainfo_file(metainfo_file_path));
+    let meta = Arc::new(TorrentMetainfo::parse(metainfo_file_path));
 
     // 2. Announce to tracker and get peers
     let peers = {
@@ -143,13 +155,15 @@ fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index:
     std::fs::rename(temp_path, output_file_path).expect("Failed to rename output file");
 }
 
+/// task 11: Download the whole file
 fn download_file(output_file_path: &str, metainfo_file_path: &str) {
-    let meta = torrent::parse_metainfo_file(metainfo_file_path);
+    let meta = TorrentMetainfo::parse(metainfo_file_path);
     let client_id = PEER_ID.to_string();
     let manager = DownloadManager::new(meta, client_id, output_file_path.to_string());
     manager.download().expect("Download failed");
 }
 
+/// magnet links | task 1: Parse magnet link
 fn parse_magnet_link(link: &str) {
     let magnet_link = MagnetLink::parse(link).expect("Failed to parse magnet link");
 
@@ -171,4 +185,55 @@ fn parse_magnet_link(link: &str) {
 
     println!("Tracker URL: {}", tracker_url);
     println!("Info Hash: {}", info_hash_hex);
+}
+
+/// magnet links | task 2: Announce extension support
+fn magnet_handshake(link: &str) {
+    // 1. Parse magnet link
+    let magnet_link = MagnetLink::parse(link).expect("Failed to parse magnet link");
+
+    // For now assume there is only one tracker
+    let tracker_url = magnet_link
+        .trackers
+        .iter()
+        .next()
+        .map(|url| url.to_string())
+        .expect("No trackers found");
+
+    // And only one info hash
+    let info_hash = magnet_link
+        .exact_topics
+        .iter()
+        .next()
+        .map(|topic| {
+            hex::decode(topic.get_hash().expect("Unsupported scheme"))
+                .expect("Invalid info hash hex")
+        })
+        .expect("No info hash found");
+
+    // 2. Announce to tracker and get peers
+    let peers = {
+        let tracker_request = tracker::TrackerRequest {
+            info_hash: info_hash.clone(),
+            peer_id: PEER_ID.to_string(),
+            port: 6881,
+            uploaded: 0,
+            downloaded: 0,
+            left: 999,
+            compact: 1,
+        };
+
+        let tracker_response = tracker::announce(tracker_url, tracker_request)
+            .expect("Failed to get tracker response");
+        tracker_response.peers
+    };
+    let peer = peers.first().expect("No peers available").clone();
+
+    // 3. Establish peer connection, announcing extension support
+    let handshake_request = HandshakeRequest::new_with_extension_support(info_hash, PEER_ID.to_raw_bytes());
+    let connection =
+        PeerConnection::new(peer.clone(), &handshake_request).expect("Failed to establish peer connection");
+
+    let peer_id_hex = hex::encode(&connection.peer_id.unwrap());
+    println!("Peer ID: {}", peer_id_hex);
 }

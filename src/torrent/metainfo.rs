@@ -12,6 +12,53 @@ pub struct TorrentMetainfo {
 }
 
 impl TorrentMetainfo {
+    pub fn parse(file_path: &str) -> Self {
+        // Read file contents
+        let torrent_bytes = std::fs::read(file_path).expect("Failed to read torrent file");
+        let torrent_info = bencode::parse_bytes(torrent_bytes);
+
+        // Extract fields
+        let announce = torrent_info
+            .get("announce")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let info_section = torrent_info
+            .get("info")
+            .expect("Missing 'info' dictionary in torrent file");
+
+        let piece_length = info_section
+            .get("piece length")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let pieces_str = info_section
+            .get("pieces")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let pieces = pieces_str.to_raw_bytes();
+
+        let length = info_section
+            .get("length")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let info_hash = {
+            let encoded_info = bencode::encode(info_section);
+            utils::sha1(&encoded_info)
+        };
+
+        TorrentMetainfo {
+            announce,
+            piece_length,
+            pieces,
+            length,
+            info_hash,
+        }
+    }
+
     pub fn get_info_hash_hex(&self) -> String {
         hex::encode(&self.info_hash)
     }
@@ -33,52 +80,5 @@ impl TorrentMetainfo {
         let start = index * 20;
         let end = start + 20;
         &self.pieces[start..end]
-    }
-}
-
-pub fn parse_metainfo_file(file_path: &str) -> TorrentMetainfo {
-    // Read file contents
-    let torrent_bytes = std::fs::read(file_path).expect("Failed to read torrent file");
-    let torrent_info = bencode::parse_bytes(torrent_bytes);
-
-    // Extract fields
-    let announce = torrent_info
-        .get("announce")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let info_section = torrent_info
-        .get("info")
-        .expect("Missing 'info' dictionary in torrent file");
-
-    let piece_length = info_section
-        .get("piece length")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-
-    let pieces_str = info_section
-        .get("pieces")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let pieces = pieces_str.to_raw_bytes();
-
-    let length = info_section
-        .get("length")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-
-    let info_hash = {
-        let encoded_info = bencode::encode(info_section);
-        utils::sha1(&encoded_info)
-    };
-
-    TorrentMetainfo {
-        announce,
-        piece_length,
-        pieces,
-        length,
-        info_hash,
     }
 }

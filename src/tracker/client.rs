@@ -94,7 +94,7 @@ pub fn announce(
     Ok(result)
 }
 
-pub fn parse_peers(peers: &str) -> Vec<Peer> {
+fn parse_peers(peers: &str) -> Vec<Peer> {
     let bytes = peers.to_raw_bytes();
     let mut result = Vec::new();
 

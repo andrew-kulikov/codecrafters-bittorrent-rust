@@ -3,10 +3,10 @@ use std::net::TcpStream;
 
 use anyhow::ensure;
 
+use super::message::{HandshakeRequest, PeerMessage, PeerMessageType};
 use crate::torrent::TorrentMetainfo;
 use crate::tracker::Peer;
-use crate::utils::{RawStringExt, hash};
-use super::message::{PeerMessage, PeerMessageType, HandshakeRequest};
+use crate::utils::{hash, RawStringExt};
 
 pub struct PeerConnection {
     pub stream: TcpStream,
@@ -15,10 +15,12 @@ pub struct PeerConnection {
 
 impl PeerConnection {
     pub fn new(addr: Peer, req: &HandshakeRequest) -> anyhow::Result<PeerConnection> {
+        println!("[PeerConnection] Connecting to {}", addr);
         let mut stream = TcpStream::connect(addr.clone())?;
 
         // Handshake format:
         // <pstrlen><pstr><reserved><info_hash><peer_id>
+        println!("[PeerConnection] Sending handshake request");
         let payload = req.as_bytes()?;
         stream.write_all(&payload)?;
 
@@ -48,6 +50,7 @@ impl PeerConnection {
             "info_hash mismatch in handshake response"
         );
 
+        println!("[PeerConnection] Handshake successful with peer {}", addr);
         Ok(PeerConnection {
             stream,
             peer_id: Some(peer_id),
@@ -82,7 +85,7 @@ impl PeerConnection {
     ) -> anyhow::Result<()> {
         let piece_length: u32 = metainfo.piece_length.try_into().unwrap();
         let output_len = output.len() as u32;
-        
+
         ensure!(
             output_len <= piece_length,
             "Output buffer length {} exceeds piece length {}",
@@ -113,15 +116,18 @@ impl PeerConnection {
 
         for request in requests.iter() {
             println!(
-                "Sending request: piece_index=0, begin={}",
+                "[PeerConnection] Sending request: piece_index=0, begin={}",
                 u32::from_be_bytes(request.payload[4..8].try_into().unwrap())
             );
+
             self.send_message(request)?;
+
             let piece_msg = self.read_message_exact(PeerMessageType::Piece)?;
             // TODO: Use recv_index
             //let recv_index = u32::from_be_bytes(piece_msg.payload[0..4].try_into().unwrap());
             let recv_begin =
                 u32::from_be_bytes(piece_msg.payload[4..8].try_into().unwrap()) as usize;
+
             output[recv_begin..recv_begin + (piece_msg.len - 9) as usize]
                 .copy_from_slice(&piece_msg.payload[8..]);
         }
@@ -134,7 +140,10 @@ impl PeerConnection {
             "Piece hash mismatch for piece index {}",
             piece_index
         );
-        println!("Piece {} downloaded and verified successfully", piece_index);
+        println!(
+            "[PeerConnection] Piece {} downloaded and verified successfully",
+            piece_index
+        );
 
         Ok(())
     }
@@ -145,7 +154,6 @@ impl PeerConnection {
     ) -> anyhow::Result<PeerMessage> {
         let message = self.read_message()?;
         if message.msg_type == PeerMessageType::KeepAlive {
-            println!("Received keep-alive message, reading next message");
             return self.read_message_exact(expected_type);
         }
         ensure!(
@@ -166,7 +174,7 @@ impl PeerConnection {
         let length = u32::from_be_bytes(length_buf);
 
         if length == 0 {
-            println!("Received keep-alive message");
+            println!("[PeerConnection] Received keep-alive message");
             // Keep-alive message
             return Ok(PeerMessage {
                 len: 0,
@@ -197,7 +205,7 @@ impl PeerConnection {
         };
 
         println!(
-            "Received message: len={}, type={:?}, payload_len={}",
+            "[PeerConnection] Received message: len={}, type={:?}, payload_len={}",
             length,
             msg_type,
             payload_buf.len()
