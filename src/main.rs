@@ -1,7 +1,8 @@
 use codecrafters_bittorrent::{
     bencode,
     download::{manager::DownloadManager, queue::PieceQueue, worker::PeerWorker},
-    peer, torrent,
+    peer,
+    torrent::{self, MagnetLink},
     tracker::{self, Peer},
     utils::RawBytesExt,
 };
@@ -15,6 +16,7 @@ fn main() {
     let command = &args[1];
 
     if command == "decode" {
+        // decode <bencoded string>
         let encoded_value = &args[2];
         let decoded_value = bencode::parse_string(encoded_value);
         println!("{}", decoded_value.to_string());
@@ -37,6 +39,9 @@ fn main() {
     } else if command == "download" {
         // download -o <output file> <metainfo file>
         download_file(&args[3], &args[4]);
+    } else if command == "magnet_parse" {
+        // magnet_parse <magnet link>
+        parse_magnet_link(&args[2]);
     } else {
         println!("unknown command: {}", args[1])
     }
@@ -143,4 +148,27 @@ fn download_file(output_file_path: &str, metainfo_file_path: &str) {
     let client_id = PEER_ID.to_string();
     let manager = DownloadManager::new(meta, client_id, output_file_path.to_string());
     manager.download().expect("Download failed");
+}
+
+fn parse_magnet_link(link: &str) {
+    let magnet_link = MagnetLink::parse(link).expect("Failed to parse magnet link");
+
+    // For now assume there is only one tracker
+    let tracker_url = magnet_link
+        .trackers
+        .iter()
+        .next()
+        .map(|url| url.to_string())
+        .expect("No trackers found");
+
+    // And only one info hash
+    let info_hash_hex = magnet_link
+        .exact_topics
+        .iter()
+        .next()
+        .map(|topic| topic.get_hash().expect("Unsupported scheme").to_string())
+        .expect("No info hash found");
+
+    println!("Tracker URL: {}", tracker_url);
+    println!("Info Hash: {}", info_hash_hex);
 }

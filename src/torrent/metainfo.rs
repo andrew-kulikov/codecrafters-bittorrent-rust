@@ -1,6 +1,15 @@
-use crate::torrent::TorrentMetainfo;
 use crate::utils::RawBytesExt;
 use crate::{bencode, utils};
+
+pub struct TorrentMetainfo {
+    pub announce: String,
+    // From "info" dictionary
+    pub piece_length: u64,
+    pub pieces: Vec<u8>,
+    pub length: u64,
+    // Metadata
+    pub info_hash: Vec<u8>,
+}
 
 impl TorrentMetainfo {
     pub fn get_info_hash_hex(&self) -> String {
