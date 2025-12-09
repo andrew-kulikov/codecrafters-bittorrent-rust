@@ -63,7 +63,7 @@ impl DownloadManager {
             let output_dir = temp_dir.clone();
 
             let handle = thread::spawn(move || {
-                let mut worker = PeerWorker::new(
+                let mut worker = PeerWorker::with_defaults(
                     peer,
                     metainfo,
                     queue,

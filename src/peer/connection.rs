@@ -1,31 +1,116 @@
+use std::convert::TryInto;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 use anyhow::ensure;
 
-use super::message::{HandshakeRequest, PeerMessage, PeerMessageType};
-use crate::torrent::TorrentMetainfo;
+use super::message::{has_extension_support, HandshakeRequest, PeerMessageType};
 use crate::tracker::Peer;
-use crate::utils::{hash, RawStringExt};
+use crate::utils::RawStringExt;
+
+/// Events produced by the reader thread for a peer connection.
+#[derive(Debug)]
+pub enum PeerEvent {
+    HandshakeComplete {
+        peer_id: Option<Vec<u8>>,
+        reserved: [u8; 8],
+        extension_supported: bool,
+    },
+    KeepAlive,
+    Choke,
+    Unchoke,
+    Interested,
+    NotInterested,
+    Have(u32),
+    Bitfield(Vec<u8>),
+    Request {
+        index: u32,
+        begin: u32,
+        length: u32,
+    },
+    Piece {
+        index: u32,
+        begin: u32,
+        data: Vec<u8>,
+    },
+    Cancel {
+        index: u32,
+        begin: u32,
+        length: u32,
+    },
+    Extended {
+        ext_id: u8,
+        payload: Vec<u8>,
+    },
+    Unknown {
+        id: u8,
+        payload: Vec<u8>,
+    },
+    IoError(String),
+}
+
+impl PeerEvent {
+    pub fn print_simple(&self) -> String {
+        match self {
+            PeerEvent::Piece { index, begin, data } => {
+                format!(
+                    "Piece {{ index: {}, begin: {}, data_len: {} }}",
+                    index,
+                    begin,
+                    data.len()
+                )
+            }
+            _ => format!("{:?}", self),
+        }
+    }
+}
+
+/// Commands sent to the writer thread.
+#[derive(Debug, Clone)]
+pub enum PeerCommand {
+    KeepAlive,
+    Interested,
+    NotInterested,
+    Request { index: u32, begin: u32, length: u32 },
+    Cancel { index: u32, begin: u32, length: u32 },
+    Extended { ext_id: u8, payload: Vec<u8> },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PeerStateSnapshot {
+    pub choked: bool,
+    pub interested: bool,
+    pub peer_interested: bool,
+    pub extension_supported: bool,
+}
 
 pub struct PeerConnection {
-    pub stream: TcpStream,
+    _peer: Peer,
+    event_rx: mpsc::Receiver<PeerEvent>,
+    shutdown: Arc<AtomicBool>,
     pub peer_id: Option<Vec<u8>>,
+    _reserved: [u8; 8],
+    state: Arc<Mutex<PeerStateSnapshot>>,
+    stream: Arc<Mutex<TcpStream>>,
 }
 
 impl PeerConnection {
     pub fn new(addr: Peer, req: &HandshakeRequest) -> anyhow::Result<PeerConnection> {
         println!("[PeerConnection] Connecting to {}", addr);
         let mut stream = TcpStream::connect(addr.clone())?;
+        stream.set_read_timeout(Some(Duration::from_secs(60)))?;
+        stream.set_write_timeout(Some(Duration::from_secs(30)))?;
 
-        // Handshake format:
-        // <pstrlen><pstr><reserved><info_hash><peer_id>
+        // Handshake format: <pstrlen><pstr><reserved><info_hash><peer_id>
         println!("[PeerConnection] Sending handshake request");
         let payload = req.as_bytes()?;
         stream.write_all(&payload)?;
 
-        // Response is also 1 + pstrlen + len(pstr) + 8 + 20 + 20
-        // We first read pstrlen, then the rest based on that.
+        // Response: 1 + pstrlen + pstr + 8 + 20 + 20
         let mut pstrlen_buf = [0u8; 1];
         stream.read_exact(&mut pstrlen_buf)?;
         let pstrlen = pstrlen_buf[0] as usize;
@@ -44,189 +129,244 @@ impl PeerConnection {
         // Verify response
         let pstr = pstr_buf.to_raw_string();
         ensure!(pstr == req.pstr, "pstr mismatch in handshake response");
-
         ensure!(
             info_hash == req.info_hash.as_slice(),
             "info_hash mismatch in handshake response"
         );
 
-        println!("[PeerConnection] Handshake successful with peer {}", addr);
-        Ok(PeerConnection {
-            stream,
-            peer_id: Some(peer_id),
-        })
-    }
-
-    pub fn init(&mut self) -> anyhow::Result<()> {
-        // 1. Receive bitfield message
-        // TODO: Decode available pieces from bitfield.payload
-        self.read_message_exact(PeerMessageType::Bitfield)?;
-
-        // 2. Send interested message
-        let interested_msg = PeerMessage {
-            len: 1,
-            msg_type: PeerMessageType::Interested,
-            payload: vec![],
-        };
-        self.send_message(&interested_msg)?;
-
-        // 3. Receive unchoke message
-        // TODO: Handle choke/unchoke state properly
-        self.read_message_exact(PeerMessageType::Unchoke)?;
-
-        Ok(())
-    }
-
-    pub fn download_piece(
-        &mut self,
-        metainfo: &TorrentMetainfo,
-        piece_index: u32,
-        output: &mut [u8],
-    ) -> anyhow::Result<()> {
-        let piece_length: u32 = metainfo.piece_length.try_into().unwrap();
-        let output_len = output.len() as u32;
-
-        ensure!(
-            output_len <= piece_length,
-            "Output buffer length {} exceeds piece length {}",
-            output_len,
-            piece_length
-        );
-
-        // Request piece by blocks
-        let mut requests: Vec<PeerMessage> = Vec::new();
-        let mut begin: u32 = 0;
-
-        while begin < output_len {
-            let request_length = std::cmp::min(1 << 14, output_len - begin);
-            let mut payload = Vec::with_capacity(12);
-            payload.extend_from_slice(&piece_index.to_be_bytes());
-            payload.extend_from_slice(&begin.to_be_bytes());
-            payload.extend_from_slice(&request_length.to_be_bytes());
-
-            let request_msg = PeerMessage {
-                len: 13,
-                msg_type: PeerMessageType::Request,
-                payload,
-            };
-            requests.push(request_msg);
-
-            begin += request_length;
-        }
-
-        for request in requests.iter() {
-            println!(
-                "[PeerConnection] Sending request: piece_index=0, begin={}",
-                u32::from_be_bytes(request.payload[4..8].try_into().unwrap())
-            );
-
-            self.send_message(request)?;
-
-            let piece_msg = self.read_message_exact(PeerMessageType::Piece)?;
-            // TODO: Use recv_index
-            //let recv_index = u32::from_be_bytes(piece_msg.payload[0..4].try_into().unwrap());
-            let recv_begin =
-                u32::from_be_bytes(piece_msg.payload[4..8].try_into().unwrap()) as usize;
-
-            output[recv_begin..recv_begin + (piece_msg.len - 9) as usize]
-                .copy_from_slice(&piece_msg.payload[8..]);
-        }
-
-        // Validate piece hash
-        let piece_hash = (&metainfo).get_piece_hash_bytes(piece_index as usize);
-        let downloaded_piece_hash = hash::sha1(output);
-        ensure!(
-            piece_hash == downloaded_piece_hash.as_slice(),
-            "Piece hash mismatch for piece index {}",
-            piece_index
-        );
+        let supports_ext = has_extension_support(&reserved);
         println!(
-            "[PeerConnection] Piece {} downloaded and verified successfully",
-            piece_index
+            "[PeerConnection] Handshake successful with peer {} (extensions: {})",
+            addr, supports_ext
         );
 
-        Ok(())
-    }
+        // Split stream into read and write halves to avoid mutex contention between reader and writer.
+        let stream_read = stream.try_clone()?;
+        let stream_write = Arc::new(Mutex::new(stream));
+        let shutdown = Arc::new(AtomicBool::new(false));
 
-    fn read_message_exact(
-        self: &mut Self,
-        expected_type: PeerMessageType,
-    ) -> anyhow::Result<PeerMessage> {
-        let message = self.read_message()?;
-        if message.msg_type == PeerMessageType::KeepAlive {
-            return self.read_message_exact(expected_type);
-        }
-        ensure!(
-            message.msg_type == expected_type,
-            "Expected message type {:?}, got {:?}",
-            expected_type,
-            message.msg_type
-        );
-        Ok(message)
-    }
+        let (event_tx, event_rx) = mpsc::channel::<PeerEvent>();
 
-    fn read_message(self: &mut Self) -> anyhow::Result<PeerMessage> {
-        // Message format:
-        // <length prefix><message ID><payload>
-        // length prefix is 4 bytes big-endian integer
-        let mut length_buf = [0u8; 4];
-        self.stream.read_exact(&mut length_buf)?;
-        let length = u32::from_be_bytes(length_buf);
+        // Seed initial state
+        let state = Arc::new(Mutex::new(PeerStateSnapshot {
+            choked: true,
+            interested: false,
+            peer_interested: false,
+            extension_supported: supports_ext,
+        }));
 
-        if length == 0 {
-            println!("[PeerConnection] Received keep-alive message");
-            // Keep-alive message
-            return Ok(PeerMessage {
-                len: 0,
-                msg_type: PeerMessageType::KeepAlive,
-                payload: vec![],
+        // Send initial handshake event so consumers know reserved bits/peer_id.
+        event_tx
+            .send(PeerEvent::HandshakeComplete {
+                peer_id: Some(peer_id.clone()),
+                reserved,
+                extension_supported: supports_ext,
+            })
+            .ok();
+
+        // Reader thread: continuously read and emit events.
+        {
+            let stream_read = stream_read;
+            let shutdown = Arc::clone(&shutdown);
+            let event_tx = event_tx.clone();
+            let state = Arc::clone(&state);
+            thread::spawn(move || {
+                let stream_read = Arc::new(Mutex::new(stream_read));
+                while !shutdown.load(Ordering::Relaxed) {
+                    match read_one_message(&stream_read) {
+                        Ok(evt) => {
+                            update_state(&state, &evt);
+                            if event_tx.send(evt).is_err() {
+                                break;
+                            }
+                        }
+                        Err(err) => {
+                            let _ = event_tx.send(PeerEvent::IoError(format!("{}", err)));
+                            break;
+                        }
+                    }
+                }
             });
         }
 
-        let mut message_id_buf = [0u8; 1];
-        self.stream.read_exact(&mut message_id_buf)?;
-        let message_id = message_id_buf[0];
+        // Drop event_tx clone so that when reader thread closes it, channel is cleanly shut down.
+        drop(event_tx);
 
-        let payload_length = length - 1;
-        let mut payload_buf = vec![0u8; payload_length as usize];
-        self.stream.read_exact(&mut payload_buf)?;
-
-        let msg_type = match message_id {
-            0 => PeerMessageType::Choke,
-            1 => PeerMessageType::Unchoke,
-            2 => PeerMessageType::Interested,
-            3 => PeerMessageType::NotInterested,
-            4 => PeerMessageType::Have,
-            5 => PeerMessageType::Bitfield,
-            6 => PeerMessageType::Request,
-            7 => PeerMessageType::Piece,
-            8 => PeerMessageType::Cancel,
-            _ => anyhow::bail!("Unknown message type: {}", message_id),
-        };
-
-        println!(
-            "[PeerConnection] Received message: len={}, type={:?}, payload_len={}",
-            length,
-            msg_type,
-            payload_buf.len()
-        );
-
-        Ok(PeerMessage {
-            len: length,
-            msg_type,
-            payload: payload_buf,
+        Ok(PeerConnection {
+            _peer: addr,
+            event_rx,
+            shutdown,
+            peer_id: Some(peer_id),
+            _reserved: reserved,
+            state,
+            stream: stream_write,
         })
     }
 
-    fn send_message(&mut self, message: &PeerMessage) -> anyhow::Result<()> {
-        // Message format:
-        // <length prefix><message ID><payload>
-        // length prefix is 4 bytes big-endian integer
-        let mut buf = Vec::with_capacity(4 + 1 + message.payload.len());
-        buf.extend_from_slice(&message.len.to_be_bytes());
-        buf.push(message.msg_type as u8);
-        buf.extend_from_slice(&message.payload);
-        self.stream.write_all(&buf)?;
-        Ok(())
+    pub fn send(&self, cmd: PeerCommand) -> anyhow::Result<()> {
+        write_one_message(&self.stream, cmd)
     }
+
+    pub fn next_event(&self) -> Option<PeerEvent> {
+        self.event_rx.recv().ok()
+    }
+
+    pub fn state(&self) -> PeerStateSnapshot {
+        *self.state.lock().unwrap()
+    }
+
+    pub fn shutdown(&self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    pub fn extension_supported(&self) -> bool {
+        self.state.lock().unwrap().extension_supported
+    }
+}
+
+fn update_state(state: &Arc<Mutex<PeerStateSnapshot>>, evt: &PeerEvent) {
+    let mut s = state.lock().unwrap();
+    match evt {
+        PeerEvent::Choke => s.choked = true,
+        PeerEvent::Unchoke => s.choked = false,
+        PeerEvent::Interested => s.peer_interested = true,
+        PeerEvent::NotInterested => s.peer_interested = false,
+        PeerEvent::HandshakeComplete {
+            extension_supported,
+            ..
+        } => {
+            s.extension_supported = *extension_supported;
+        }
+        _ => {}
+    }
+}
+
+fn read_one_message(stream: &Arc<Mutex<TcpStream>>) -> anyhow::Result<PeerEvent> {
+    let mut stream = stream.lock().unwrap();
+    let mut length_buf = [0u8; 4];
+    stream.read_exact(&mut length_buf)?;
+    let length = u32::from_be_bytes(length_buf);
+    println!("[PeerConnection] Reading message of length {}", length);
+
+    if length == 0 {
+        return Ok(PeerEvent::KeepAlive);
+    }
+
+    let mut message_id_buf = [0u8; 1];
+    stream.read_exact(&mut message_id_buf)?;
+    let message_id = message_id_buf[0];
+
+    let payload_length = length - 1;
+    let mut payload_buf = vec![0u8; payload_length as usize];
+    stream.read_exact(&mut payload_buf)?;
+
+    let evt = match message_id {
+        0 => PeerEvent::Choke,
+        1 => PeerEvent::Unchoke,
+        2 => PeerEvent::Interested,
+        3 => PeerEvent::NotInterested,
+        4 => {
+            let idx = u32::from_be_bytes(payload_buf[0..4].try_into()?);
+            PeerEvent::Have(idx)
+        }
+        5 => PeerEvent::Bitfield(payload_buf),
+        6 => {
+            let index = u32::from_be_bytes(payload_buf[0..4].try_into()?);
+            let begin = u32::from_be_bytes(payload_buf[4..8].try_into()?);
+            let length = u32::from_be_bytes(payload_buf[8..12].try_into()?);
+            PeerEvent::Request {
+                index,
+                begin,
+                length,
+            }
+        }
+        7 => {
+            let index = u32::from_be_bytes(payload_buf[0..4].try_into()?);
+            let begin = u32::from_be_bytes(payload_buf[4..8].try_into()?);
+            let data = payload_buf[8..].to_vec();
+            PeerEvent::Piece { index, begin, data }
+        }
+        8 => {
+            let index = u32::from_be_bytes(payload_buf[0..4].try_into()?);
+            let begin = u32::from_be_bytes(payload_buf[4..8].try_into()?);
+            let length = u32::from_be_bytes(payload_buf[8..12].try_into()?);
+            PeerEvent::Cancel {
+                index,
+                begin,
+                length,
+            }
+        }
+        20 => {
+            let ext_id = payload_buf.first().copied().unwrap_or(0);
+            let payload = if payload_buf.is_empty() {
+                Vec::new()
+            } else {
+                payload_buf[1..].to_vec()
+            };
+            // TODO: Handle ext_id == 0 (extension handshake) when implementing LTEP.
+            PeerEvent::Extended { ext_id, payload }
+        }
+        other => PeerEvent::Unknown {
+            id: other,
+            payload: payload_buf,
+        },
+    };
+
+    println!("[PeerConnection] Received event: {}", evt.print_simple());
+
+    Ok(evt)
+}
+
+fn write_one_message(stream: &Arc<Mutex<TcpStream>>, cmd: PeerCommand) -> anyhow::Result<()> {
+    println!("[PeerConnection] Sending command: {:?}", cmd);
+    let mut stream = stream.lock().unwrap();
+    match cmd {
+        PeerCommand::KeepAlive => {
+            stream.write_all(&0u32.to_be_bytes())?;
+        }
+        PeerCommand::Interested => {
+            stream.write_all(&1u32.to_be_bytes())?;
+            stream.write_all(&[PeerMessageType::Interested as u8])?;
+        }
+        PeerCommand::NotInterested => {
+            stream.write_all(&1u32.to_be_bytes())?;
+            stream.write_all(&[PeerMessageType::NotInterested as u8])?;
+        }
+        PeerCommand::Request {
+            index,
+            begin,
+            length,
+        } => {
+            let mut buf = Vec::with_capacity(4 + 1 + 12);
+            buf.extend_from_slice(&13u32.to_be_bytes());
+            buf.push(PeerMessageType::Request as u8);
+            buf.extend_from_slice(&index.to_be_bytes());
+            buf.extend_from_slice(&begin.to_be_bytes());
+            buf.extend_from_slice(&length.to_be_bytes());
+            stream.write_all(&buf)?;
+        }
+        PeerCommand::Cancel {
+            index,
+            begin,
+            length,
+        } => {
+            let mut buf = Vec::with_capacity(4 + 1 + 12);
+            buf.extend_from_slice(&13u32.to_be_bytes());
+            buf.push(PeerMessageType::Cancel as u8);
+            buf.extend_from_slice(&index.to_be_bytes());
+            buf.extend_from_slice(&begin.to_be_bytes());
+            buf.extend_from_slice(&length.to_be_bytes());
+            stream.write_all(&buf)?;
+        }
+        PeerCommand::Extended { ext_id, payload } => {
+            let mut buf = Vec::with_capacity(4 + 1 + 1 + payload.len());
+            let len = 2 + payload.len() as u32; // msg_id + ext_id + payload
+            buf.extend_from_slice(&len.to_be_bytes());
+            buf.push(PeerMessageType::Extended as u8);
+            buf.push(ext_id);
+            buf.extend_from_slice(&payload);
+            stream.write_all(&buf)?;
+        }
+    }
+    Ok(())
 }

@@ -140,7 +140,7 @@ fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index:
     // Use current directory as temp output
     let output_dir = ".";
 
-    let mut worker = PeerWorker::new(
+    let mut worker = PeerWorker::with_defaults(
         peer,
         meta.clone(),
         queue,

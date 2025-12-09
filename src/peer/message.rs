@@ -12,6 +12,8 @@ pub enum PeerMessageType {
     Request = 6,
     Piece = 7,
     Cancel = 8,
+    /// BEP-10 extended message (msg_id = 20)
+    Extended = 20,
 }
 
 pub struct PeerMessage {
@@ -32,6 +34,38 @@ pub struct HandshakeResponse {
     pub reserved: [u8; 8],
     pub info_hash: Vec<u8>,
     pub peer_id: Vec<u8>,
+}
+
+/// Placeholder for incoming/outgoing BEP-10 extension handshake payload.
+/// See: https://www.bittorrent.org/beps/bep_0010.html
+/// TODO: Implement encode/decode when enabling extensions.
+#[derive(Debug, Clone)]
+pub struct ExtensionHandshakePayload {
+    /// Map of extension name -> extension message ID ("m" in spec)
+    pub extensions: Vec<(String, u8)>,
+    /// Optional metadata size, client name, etc.
+    pub metadata_size: Option<u64>,
+    pub client_name: Option<String>,
+}
+
+impl ExtensionHandshakePayload {
+    pub fn new() -> Self {
+        Self {
+            extensions: Vec::new(),
+            metadata_size: None,
+            client_name: None,
+        }
+    }
+
+    pub fn encode(&self) -> anyhow::Result<Vec<u8>> {
+        // TODO: bencode this struct into the "extended handshake" dictionary payload
+        anyhow::bail!("extension handshake encoding not implemented yet")
+    }
+
+    pub fn decode(_bytes: &[u8]) -> anyhow::Result<Self> {
+        // TODO: parse bencoded dictionary and populate fields
+        anyhow::bail!("extension handshake decoding not implemented yet")
+    }
 }
 
 impl HandshakeRequest {
@@ -83,6 +117,11 @@ fn get_reserved_extension_support_bytes() -> [u8; 8] {
     let mut reserved = [0u8; 8];
     reserved[5] |= 0b0001_0000;
     reserved
+}
+
+/// Check if reserved bytes indicate extension support (BEP-10).
+pub fn has_extension_support(reserved: &[u8; 8]) -> bool {
+    reserved[5] & 0b0001_0000 != 0
 }
 
 #[cfg(test)]
