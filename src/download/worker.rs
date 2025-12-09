@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{anyhow, ensure};
 
 use super::queue::PieceQueue;
-use crate::peer::{HandshakeRequest, PeerCommand, PeerConnection, PeerEvent};
+use crate::peer::{ExtensionHandshakePayload, HandshakeRequest, PeerCommand, PeerConnection, PeerEvent, PeerMessageType};
 use crate::torrent::TorrentMetainfo;
 use crate::tracker::Peer;
 use crate::utils::{hash, RawBytesExt};
@@ -60,7 +60,14 @@ impl PeerWorker {
         client_id: String,
         output_dir: String,
     ) -> Self {
-        Self::new(peer, metainfo, queue, client_id, output_dir, PeerWorkerConfig::default())
+        Self::new(
+            peer,
+            metainfo,
+            queue,
+            client_id,
+            output_dir,
+            PeerWorkerConfig::default(),
+        )
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
@@ -97,37 +104,6 @@ impl PeerWorker {
         Ok(())
     }
 
-    fn get_piece_len(&self, piece_index: u32) -> u32 {
-        let total_length = self.metainfo.length;
-        let piece_len = self.metainfo.piece_length;
-        let num_pieces = (total_length + piece_len - 1) / piece_len;
-
-        let current_piece_len = if piece_index as u64 == num_pieces - 1 {
-            let rem = total_length % piece_len;
-            if rem == 0 {
-                piece_len
-            } else {
-                rem
-            }
-        } else {
-            piece_len
-        };
-        current_piece_len as u32
-    }
-
-    fn log(&self, message: &str) {
-        println!("[PeerWorker {}] {}", self.peer, message);
-    }
-
-    fn backoff_delay(&self, attempts: u32) -> Duration {
-        let base = Duration::from_secs(self.config.backoff_base_secs.max(1));
-        let cap = Duration::from_secs(self.config.backoff_cap_secs.max(self.config.backoff_base_secs));
-        let shift = attempts.min(10);
-        let factor = 1u32 << shift;
-        let wait = base.saturating_mul(factor);
-        if wait > cap { cap } else { wait }
-    }
-
     fn drive_connection(&mut self, conn: PeerConnection) -> anyhow::Result<()> {
         // Send interested immediately; we tolerate extension handshake arriving anytime.
         conn.send(PeerCommand::Interested)?;
@@ -135,9 +111,16 @@ impl PeerWorker {
         // Keep a simple loop over events.
         while let Some(event) = conn.next_event() {
             match event {
-                PeerEvent::HandshakeComplete { extension_supported, .. } => {
+                PeerEvent::HandshakeComplete {
+                    extension_supported,
+                    ..
+                } => {
                     if extension_supported {
-                        // TODO: send extension handshake (ext_id 0) once implemented.
+                        let cmd = PeerCommand::Extended {
+                            ext_id: PeerMessageType::Extended as u8,
+                            payload: ExtensionHandshakePayload::default_extensions().encode()?,
+                        };
+                        conn.send(cmd)?
                     }
                 }
                 PeerEvent::Choke => {
@@ -170,7 +153,10 @@ impl PeerWorker {
             }
 
             let piece_len = self.get_piece_len(piece_index);
-            self.log(&format!("Downloading piece {} ({} bytes)", piece_index, piece_len));
+            self.log(&format!(
+                "Downloading piece {} ({} bytes)",
+                piece_index, piece_len
+            ));
 
             let mut buffer = vec![0u8; piece_len as usize];
             match self.download_single_piece(conn, piece_index, &mut buffer) {
@@ -231,7 +217,11 @@ impl PeerWorker {
         // Validate hash
         let expected = self.metainfo.get_piece_hash_bytes(piece_index as usize);
         let actual = hash::sha1(buffer);
-        ensure!(expected == actual.as_slice(), "hash mismatch for piece {}", piece_index);
+        ensure!(
+            expected == actual.as_slice(),
+            "hash mismatch for piece {}",
+            piece_index
+        );
 
         Ok(())
     }
@@ -240,5 +230,44 @@ impl PeerWorker {
         let path = std::path::Path::new(&self.output_dir).join(format!("piece_{}", piece_index));
         std::fs::write(path, data)?;
         Ok(())
+    }
+
+    fn get_piece_len(&self, piece_index: u32) -> u32 {
+        let total_length = self.metainfo.length;
+        let piece_len = self.metainfo.piece_length;
+        let num_pieces = (total_length + piece_len - 1) / piece_len;
+
+        let current_piece_len = if piece_index as u64 == num_pieces - 1 {
+            let rem = total_length % piece_len;
+            if rem == 0 {
+                piece_len
+            } else {
+                rem
+            }
+        } else {
+            piece_len
+        };
+        current_piece_len as u32
+    }
+
+    fn log(&self, message: &str) {
+        println!("[PeerWorker] [{}] {}", self.peer, message);
+    }
+
+    fn backoff_delay(&self, attempts: u32) -> Duration {
+        let base = Duration::from_secs(self.config.backoff_base_secs.max(1));
+        let cap = Duration::from_secs(
+            self.config
+                .backoff_cap_secs
+                .max(self.config.backoff_base_secs),
+        );
+        let shift = attempts.min(10);
+        let factor = 1u32 << shift;
+        let wait = base.saturating_mul(factor);
+        if wait > cap {
+            cap
+        } else {
+            wait
+        }
     }
 }

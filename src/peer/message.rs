@@ -36,38 +36,6 @@ pub struct HandshakeResponse {
     pub peer_id: Vec<u8>,
 }
 
-/// Placeholder for incoming/outgoing BEP-10 extension handshake payload.
-/// See: https://www.bittorrent.org/beps/bep_0010.html
-/// TODO: Implement encode/decode when enabling extensions.
-#[derive(Debug, Clone)]
-pub struct ExtensionHandshakePayload {
-    /// Map of extension name -> extension message ID ("m" in spec)
-    pub extensions: Vec<(String, u8)>,
-    /// Optional metadata size, client name, etc.
-    pub metadata_size: Option<u64>,
-    pub client_name: Option<String>,
-}
-
-impl ExtensionHandshakePayload {
-    pub fn new() -> Self {
-        Self {
-            extensions: Vec::new(),
-            metadata_size: None,
-            client_name: None,
-        }
-    }
-
-    pub fn encode(&self) -> anyhow::Result<Vec<u8>> {
-        // TODO: bencode this struct into the "extended handshake" dictionary payload
-        anyhow::bail!("extension handshake encoding not implemented yet")
-    }
-
-    pub fn decode(_bytes: &[u8]) -> anyhow::Result<Self> {
-        // TODO: parse bencoded dictionary and populate fields
-        anyhow::bail!("extension handshake decoding not implemented yet")
-    }
-}
-
 impl HandshakeRequest {
     pub fn new(info_hash: Vec<u8>, peer_id: Vec<u8>) -> Self {
         Self {

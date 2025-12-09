@@ -188,6 +188,7 @@ fn parse_magnet_link(link: &str) {
 }
 
 /// magnet links | task 2: Announce extension support
+/// magnet links | task 3: Send extension handshake
 fn magnet_handshake(link: &str) {
     // 1. Parse magnet link
     let magnet_link = MagnetLink::parse(link).expect("Failed to parse magnet link");
@@ -236,4 +237,6 @@ fn magnet_handshake(link: &str) {
 
     let peer_id_hex = hex::encode(&connection.peer_id.unwrap());
     println!("Peer ID: {}", peer_id_hex);
+
+    // 4. Send extension handshake
 }

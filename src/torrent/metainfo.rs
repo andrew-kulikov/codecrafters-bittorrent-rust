@@ -46,7 +46,8 @@ impl TorrentMetainfo {
             .unwrap_or(0);
 
         let info_hash = {
-            let encoded_info = bencode::encode(info_section);
+            // TODO: Fix unwrap
+            let encoded_info = bencode::encode(info_section).unwrap();
             utils::sha1(&encoded_info)
         };
 
