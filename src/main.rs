@@ -1,7 +1,10 @@
 use codecrafters_bittorrent::{
     bencode,
     download::{manager::DownloadManager, queue::PieceQueue, worker::PeerWorker},
-    peer::{HandshakeRequest, PeerConnection},
+    peer::{
+        ExtensionHandshakePayload, HandshakeRequest, PeerCommand, PeerConnection, PeerEvent,
+        PeerSession, PeerSessionConfig, PeerSessionHandler, SessionControl,
+    },
     torrent::{MagnetLink, TorrentMetainfo},
     tracker::{self, Peer},
     utils::RawBytesExt,
@@ -230,13 +233,61 @@ fn magnet_handshake(link: &str) {
     };
     let peer = peers.first().expect("No peers available").clone();
 
-    // 3. Establish peer connection, announcing extension support
-    let handshake_request = HandshakeRequest::new_with_extension_support(info_hash, PEER_ID.to_raw_bytes());
-    let connection =
-        PeerConnection::new(peer.clone(), &handshake_request).expect("Failed to establish peer connection");
+    // 3. Run a lightweight session that sends extension handshake and prints any reply
+    run_extension_handshake(peer, info_hash).expect("Extension handshake failed");
+}
 
-    let peer_id_hex = hex::encode(&connection.peer_id.unwrap());
-    println!("Peer ID: {}", peer_id_hex);
+/// Minimal handler that just sends LTEP handshake and exits after first response.
+struct MagnetHandshakeHandler {
+    sent: bool,
+}
 
-    // 4. Send extension handshake
+impl PeerSessionHandler for MagnetHandshakeHandler {
+    fn on_connect(&mut self, conn: &PeerConnection) -> anyhow::Result<SessionControl> {
+        conn.send(PeerCommand::Interested)?;
+        if let Some(peer_id) = &conn.peer_id {
+            println!("Peer ID: {}", hex::encode(peer_id));
+        }
+        Ok(SessionControl::Continue)
+    }
+
+    fn on_event(
+        &mut self,
+        conn: &PeerConnection,
+        event: PeerEvent,
+    ) -> anyhow::Result<SessionControl> {
+        match event {
+            PeerEvent::HandshakeComplete {
+                extension_supported,
+                ..
+            } => {
+                if extension_supported && !self.sent {
+                    let payload = ExtensionHandshakePayload::default_extensions().encode()?;
+                    conn.send(PeerCommand::Extended { ext_id: 0, payload })?;
+                    self.sent = true;
+                }
+                Ok(SessionControl::Continue)
+            }
+            PeerEvent::Extended { ext_id: 0, payload } => {
+                println!(
+                    "Received extension handshake ({} bytes): {:02x?}",
+                    payload.len(), payload
+                );
+                Ok(SessionControl::Stop)
+            }
+            PeerEvent::IoError(err) => Err(anyhow::anyhow!(err)),
+            _ => Ok(SessionControl::Continue),
+        }
+    }
+}
+
+fn run_extension_handshake(peer: Peer, info_hash: Vec<u8>) -> anyhow::Result<()> {
+    let mut handler = MagnetHandshakeHandler { sent: false };
+    let session = PeerSession::new(
+        peer,
+        info_hash,
+        PEER_ID.to_string(),
+        PeerSessionConfig::default(),
+    );
+    session.run(&mut handler)
 }
