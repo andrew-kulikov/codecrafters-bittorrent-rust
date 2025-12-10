@@ -131,11 +131,8 @@ fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index:
         tracker_response.peers
     };
 
-    // 3. Setup queue
-    let queue = Arc::new(PieceQueue::empty());
-    queue.push(piece_index);
-    // Signal that no more pieces will be added, so the worker can exit after downloading
-    queue.shutdown();
+    // 3. Setup queue seeded with the desired piece
+    let queue = Arc::new(PieceQueue::new(1));
 
     // 4. Start worker
     let peer = peers.first().expect("No peers available").clone();
