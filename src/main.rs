@@ -132,7 +132,7 @@ fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index:
     };
 
     // 3. Setup queue seeded with the desired piece
-    let queue = Arc::new(PieceQueue::new(1));
+    let queue = Arc::new(PieceQueue::new(&vec![piece_index]));
 
     // 4. Start worker
     let peer = peers.first().expect("No peers available").clone();

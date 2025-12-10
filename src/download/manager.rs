@@ -44,7 +44,8 @@ impl DownloadManager {
         let num_pieces = self.metainfo.get_piece_count() as u64;
         println!("[DownloadManager] Total pieces to download: {}", num_pieces);
 
-        let queue = Arc::new(PieceQueue::new(num_pieces as u32));
+        let piece_ids = (0..num_pieces as u32).collect::<Vec<u32>>();
+        let queue = Arc::new(PieceQueue::new(&piece_ids));
 
         // Create a temporary directory for pieces
         let temp_dir = std::path::Path::new(&self.output_path)

@@ -11,22 +11,22 @@ pub struct PieceQueue {
 }
 
 impl PieceQueue {
-    pub fn new(piece_count: u32) -> Self {
+    pub fn new(piece_ids: &Vec<u32>) -> Self {
         let mut queue = VecDeque::new();
-        for i in 0..piece_count {
-            queue.push_back(i);
+        for i in piece_ids {
+            queue.push_back(i.clone());
         }
         Self {
             queue: Mutex::new(queue),
             cond: Condvar::new(),
             finished: Mutex::new(false),
-            total_pieces: piece_count,
+            total_pieces: piece_ids.len() as u32,
             completed_pieces: Mutex::new(0),
         }
     }
 
     pub fn empty() -> Self {
-        Self::new(0)
+        Self::new(&vec![])
     }
 
     pub fn pop(&self) -> Option<u32> {
