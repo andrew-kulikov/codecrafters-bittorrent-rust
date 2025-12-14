@@ -13,7 +13,7 @@ const PEER_ID: &str = "-CT0001-123456789012";
 
 fn main() {
     let console_log_handler = log::ConsoleLogger;
-    log::set_global_log_level(log::LogLevel::Info);
+    log::set_global_log_level(log::LogLevel::Debug);
     log::set_global_log_handler(Box::new(console_log_handler));
 
     let args: Vec<String> = env::args().collect();
