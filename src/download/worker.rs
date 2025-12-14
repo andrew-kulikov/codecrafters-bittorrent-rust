@@ -5,7 +5,7 @@ use anyhow::anyhow;
 
 use super::queue::PieceQueue;
 use crate::peer::{
-    ExtensionHandshakePayload, PeerCommand, PeerConnection, PeerEvent, PeerSession,
+    PeerCommand, PeerConnection, PeerEvent, PeerSession,
     PeerSessionConfig, PeerSessionHandler, SessionControl,
 };
 use crate::torrent::TorrentMetainfo;
@@ -226,20 +226,6 @@ impl PeerSessionHandler for PeerWorker {
         event: PeerEvent,
     ) -> anyhow::Result<SessionControl> {
         match event {
-            // TODO: Remove extension support from download worker. We expect here that metadata already received.
-            PeerEvent::HandshakeComplete {
-                extension_supported,
-                ..
-            } => {
-                if extension_supported {
-                    let cmd = PeerCommand::Extended {
-                        ext_id: 0,
-                        payload: ExtensionHandshakePayload::default_extensions().encode()?,
-                    };
-                    conn.send(cmd)?
-                }
-                Ok(SessionControl::Continue)
-            }
             PeerEvent::Choke => {
                 self.log("Choked by peer; will reconnect");
                 self.abandon_active_piece();
@@ -260,14 +246,6 @@ impl PeerSessionHandler for PeerWorker {
             }
             PeerEvent::Piece { index, begin, data } =>
                 self.handle_piece_event(conn, index, begin, data),
-            PeerEvent::Extended { ext_id: 0, payload } => {
-                // TODO: Save extension ids
-                self.log(&format!(
-                    "Received extension handshake ({} bytes)",
-                    payload.len()
-                ));
-                Ok(SessionControl::Continue)
-            }
             PeerEvent::IoError(err) => {
                 self.abandon_active_piece();
                 Err(anyhow!(err))

@@ -2,9 +2,6 @@ use serde::{Deserialize, Serialize};
 use serde_bencode;
 use std::collections::BTreeMap;
 
-pub const METADATA_EXTENSION_NAME: &str = "ut_metadata";
-pub const OUR_METADATA_EXTENSION_MESSAGE_ID: u8 = 17;
-
 /// Placeholder for incoming/outgoing BEP-10 extension handshake payload.
 /// See: https://www.bittorrent.org/beps/bep_0010.html
 /// TODO: Implement encode/decode when enabling extensions.
@@ -24,17 +21,9 @@ pub struct ExtensionMessage {
 }
 
 impl ExtensionHandshakePayload {
-    pub fn new() -> Self {
+    pub fn new(extensions: Vec<(String, u8)>) -> Self {
         Self {
-            extensions: Vec::new(),
-            metadata_size: None,
-            client_name: None,
-        }
-    }
-
-    pub fn default_extensions() -> ExtensionHandshakePayload {
-        ExtensionHandshakePayload {
-            extensions: vec![(METADATA_EXTENSION_NAME.to_string(), OUR_METADATA_EXTENSION_MESSAGE_ID)],
+            extensions,
             metadata_size: None,
             client_name: None,
         }
@@ -68,9 +57,9 @@ impl ExtensionHandshakePayload {
         })
     }
 
-    pub fn get_metadata_extension_id(&self) -> Option<u8> {
+    pub fn get_extension_id(&self, extension_name: &str) -> Option<u8> {
         for (name, ext_id) in &self.extensions {
-            if name == METADATA_EXTENSION_NAME {
+            if name == extension_name {
                 return Some(*ext_id);
             }
         }

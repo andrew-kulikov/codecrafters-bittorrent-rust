@@ -3,12 +3,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     peer::{
-        extension::ExtensionHandshakePayload, PeerCommand, PeerConnection, PeerEvent, PeerSession,
-        PeerSessionConfig, PeerSessionHandler, SessionControl,
+        PeerCommand, PeerConnection, PeerEvent, PeerSession, PeerSessionConfig, PeerSessionHandler, SessionControl, extension::ExtensionHandshakePayload
     },
     torrent::MagnetLink,
-    tracker,
+    tracker, utils::log,
 };
+
+const METADATA_EXTENSION_NAME: &str = "ut_metadata";
+const MY_METADATA_EXTENSION_MESSAGE_ID: u8 = 42;
 
 pub struct MetadataFetcher {
     magnet_link: MagnetLink,
@@ -149,7 +151,8 @@ impl PeerSessionHandler for MetadataFetcher {
                 ..
             } => {
                 if extension_supported && !self.ext_handshake_sent {
-                    let payload = ExtensionHandshakePayload::default_extensions().encode()?;
+                    let extensions = vec![(METADATA_EXTENSION_NAME.to_string(), MY_METADATA_EXTENSION_MESSAGE_ID)];
+                    let payload = ExtensionHandshakePayload::new(extensions).encode()?;
                     conn.send(PeerCommand::Extended { ext_id: 0, payload })?;
                     self.ext_handshake_sent = true;
                 }
@@ -157,7 +160,7 @@ impl PeerSessionHandler for MetadataFetcher {
             }
             PeerEvent::Extended { ext_id: 0, payload } => {
                 let ext_payload = ExtensionHandshakePayload::decode(&payload)?;
-                if let Some(metadata_ext_id) = ext_payload.get_metadata_extension_id() {
+                if let Some(metadata_ext_id) = ext_payload.get_extension_id(METADATA_EXTENSION_NAME) {
                     self.peer_metadata_id = Some(metadata_ext_id);
                 }
 
@@ -169,6 +172,11 @@ impl PeerSessionHandler for MetadataFetcher {
                         Ok(SessionControl::Continue)
                     }
                 }
+            }
+            PeerEvent::Extended { ext_id: MY_METADATA_EXTENSION_MESSAGE_ID, payload } => {
+                log::debug("MetadataFetcher", &format!("Received metadata message ({} bytes)", payload.len()));
+                // For now stop on receiving any metadata message
+                Ok(SessionControl::Stop)
             }
             PeerEvent::IoError(err) => Err(anyhow::anyhow!(err)),
             _ => Ok(SessionControl::Continue),
