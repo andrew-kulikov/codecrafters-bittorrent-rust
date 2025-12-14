@@ -13,28 +13,38 @@ pub struct TorrentMetainfo {
 }
 
 impl TorrentMetainfo {
-    pub fn parse(file_path: &str) -> Self {
+    pub fn parse(file_path: &str) -> anyhow::Result<Self> {
         // Read file contents
-        let torrent_bytes = std::fs::read(file_path).expect("Failed to read torrent file");
-        let torrent: TorrentFile = serde_bencode::from_bytes(&torrent_bytes)
-            .expect("Failed to decode torrent file");
+        let bytes = std::fs::read(file_path).expect("Failed to read torrent file");
+        Self::from_bytes(&bytes)
+    }
 
-        let info_hash_bytes = serde_bencode::to_bytes(&torrent.info)
+    pub fn from_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
+        let parsed_metainfo: TorrentMetainfoSerde =
+            serde_bencode::from_bytes(&bytes).expect("Failed to decode torrent file");
+
+        let info_hash_bytes = serde_bencode::to_bytes(&parsed_metainfo.info)
             .expect("Failed to re-encode info dictionary for hashing");
 
-        let length = torrent
+        let length = parsed_metainfo
             .info
             .length
-            .or_else(|| torrent.info.files.as_ref().map(|files| files.iter().map(|f| f.length).sum()))
+            .or_else(|| {
+                parsed_metainfo
+                    .info
+                    .files
+                    .as_ref()
+                    .map(|files| files.iter().map(|f| f.length).sum())
+            })
             .unwrap_or(0);
 
-        TorrentMetainfo {
-            announce: torrent.announce,
-            piece_length: torrent.info.piece_length,
-            pieces: torrent.info.pieces,
+        Ok(TorrentMetainfo {
+            announce: parsed_metainfo.announce,
+            piece_length: parsed_metainfo.info.piece_length,
+            pieces: parsed_metainfo.info.pieces,
             length,
             info_hash: utils::sha1(&info_hash_bytes),
-        }
+        })
     }
 
     pub fn get_info_hash_hex(&self) -> String {
@@ -62,7 +72,7 @@ impl TorrentMetainfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct TorrentFile {
+struct TorrentMetainfoSerde {
     announce: String,
     info: InfoDictionary,
 }

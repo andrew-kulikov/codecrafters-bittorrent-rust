@@ -69,21 +69,25 @@ fn decode_bencoded_string(encoded_value: &str) {
 /// task 6: Calculate info hash
 /// task 7: Piece hashes
 fn print_torrent_info(metainfo_file_path: &str) {
-    let info = TorrentMetainfo::parse(metainfo_file_path);
+    let info = TorrentMetainfo::parse(metainfo_file_path).unwrap();
 
-    println!("Tracker URL: {}", info.announce);
-    println!("Length: {}", info.length);
-    println!("Info Hash: {}", info.get_info_hash_hex());
-    println!("Piece Length: {}", info.piece_length);
+    print_metainfo(&info);
+}
+
+fn print_metainfo(metainfo: &TorrentMetainfo) {
+    println!("Tracker URL: {}", metainfo.announce);
+    println!("Length: {}", metainfo.length);
+    println!("Info Hash: {}", metainfo.get_info_hash_hex());
+    println!("Piece Length: {}", metainfo.piece_length);
     println!("Piece Hashes:");
-    for hash in info.get_piece_hashes() {
+    for hash in metainfo.get_piece_hashes() {
         println!("{}", hash);
     }
 }
 
 /// task 8: Discover peers
 fn request_tracker_peers(metainfo_file_path: &str) {
-    let info = TorrentMetainfo::parse(metainfo_file_path);
+    let info = TorrentMetainfo::parse(metainfo_file_path).unwrap();
 
     let tracker_request = tracker::TrackerRequest {
         info_hash: info.info_hash.clone(),
@@ -105,7 +109,7 @@ fn request_tracker_peers(metainfo_file_path: &str) {
 
 /// task 9: Peer handshake
 fn peer_handshake(metainfo_file_path: &str, peer: Peer) {
-    let meta = TorrentMetainfo::parse(metainfo_file_path);
+    let meta = TorrentMetainfo::parse(metainfo_file_path).unwrap();
     let request = HandshakeRequest::new(meta.info_hash.clone(), PEER_ID.to_raw_bytes());
     let connection =
         PeerConnection::new(peer.clone(), &request).expect("Failed to establish peer connection");
@@ -116,7 +120,7 @@ fn peer_handshake(metainfo_file_path: &str, peer: Peer) {
 /// task 10: Download a piece
 fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index: u32) {
     // 1. Parse metainfo file
-    let meta = Arc::new(TorrentMetainfo::parse(metainfo_file_path));
+    let meta = Arc::new(TorrentMetainfo::parse(metainfo_file_path).unwrap());
 
     // 2. Announce to tracker and get peers
     let peers = {
@@ -161,7 +165,7 @@ fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index:
 
 /// task 11: Download the whole file
 fn download_file(output_file_path: &str, metainfo_file_path: &str) {
-    let meta = TorrentMetainfo::parse(metainfo_file_path);
+    let meta = TorrentMetainfo::parse(metainfo_file_path).unwrap();
     let client_id = PEER_ID.to_string();
     let manager = DownloadManager::new(meta, client_id, output_file_path.to_string());
     manager.download().expect("Download failed");
@@ -207,6 +211,7 @@ fn magnet_handshake(link: &str) {
 }
 
 /// magnet links | task 5: Request metadata
+/// magnet links | task 6: Receive metadata
 fn magnet_info(link: &str) {
     let mut metadata_fetcher = MetadataFetcher::new(link, PEER_ID.to_string(), false)
         .expect("Failed to create metadata fetcher");
@@ -216,5 +221,8 @@ fn magnet_info(link: &str) {
     }
     if let Some(metadata_ext_id) = result.peer_metadata_id {
         println!("Peer Metadata Extension ID: {}", metadata_ext_id);
+    }
+    if let Some(metainfo) = result.metainfo {
+        print_metainfo(&metainfo);
     }
 }

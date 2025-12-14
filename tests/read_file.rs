@@ -2,7 +2,7 @@ use codecrafters_bittorrent::torrent::TorrentMetainfo;
 
 #[test]
 fn test_parse_torrent_file() {
-    let description = TorrentMetainfo::parse("sample.torrent");
+    let description = TorrentMetainfo::parse("sample.torrent").unwrap();
     let piece_hashes = description.get_piece_hashes();
 
     assert_eq!(
