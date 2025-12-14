@@ -272,7 +272,7 @@ impl PeerSessionHandler for MagnetHandshakeHandler {
             PeerEvent::Extended { ext_id: 0, payload } => {
                 let ext_payload = ExtensionHandshakePayload::decode(&payload)?;
                 if let Some(metadata_ext_id) = ext_payload.get_metadata_extension_id() {
-                    println!("Peer metadata Extension ID: {:?}", metadata_ext_id);
+                    println!("Peer Metadata Extension ID: {}", metadata_ext_id);
                 }
                 Ok(SessionControl::Stop)
             }
