@@ -247,7 +247,7 @@ impl PeerSessionHandler for MagnetHandshakeHandler {
     fn on_connect(&mut self, conn: &PeerConnection) -> anyhow::Result<SessionControl> {
         //conn.send(PeerCommand::Interested)?;
         if let Some(peer_id) = &conn.peer_id {
-            //println!("Peer ID: {}", hex::encode(peer_id));
+            println!("Peer ID: {}", hex::encode(peer_id));
         }
         Ok(SessionControl::Continue)
     }
