@@ -117,8 +117,8 @@ impl MetadataFetcher {
                     let metainfo = match &self.metadata_bytes {
                         Some(bytes) => {
                             let v: Value = serde_bencode::from_bytes(bytes)?;
-                            log::debug("MetadataFetcher", &format!("Parsed metainfo: {:#?}", v));
-                            log::debug("MetadataFetcher", &format!("Source bytes: {:#?}", bytes));
+                            log::debug("MetadataFetcher", &format!("Parsed metainfo: {:?}", v));
+                            log::debug("MetadataFetcher", &format!("Source bytes: {:?}", bytes));
                             Some(
                                 TorrentMetainfo::from_bytes(bytes)
                                     .context("Failed to parse received metadata")?,
