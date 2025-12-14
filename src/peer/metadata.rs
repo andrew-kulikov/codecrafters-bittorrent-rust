@@ -3,14 +3,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     peer::{
-        extension::ExtensionHandshakePayload, ExtensionMessage, PeerCommand, PeerConnection,
-        PeerEvent, PeerSession, PeerSessionConfig, PeerSessionHandler, SessionControl,
+        extension::ExtensionHandshakePayload, PeerCommand, PeerConnection, PeerEvent, PeerSession,
+        PeerSessionConfig, PeerSessionHandler, SessionControl,
     },
     torrent::MagnetLink,
     tracker,
 };
-
-const METADATA_EXTENSION_ID: u8 = 20;
 
 pub struct MetadataFetcher {
     magnet_link: MagnetLink,
@@ -112,16 +110,20 @@ impl MetadataFetcher {
     }
 
     fn request_metadata(&self, conn: &PeerConnection) -> anyhow::Result<()> {
-        let ext_message = ExtensionMessage {
-            msg_id: self.peer_metadata_id.unwrap(),
-            payload: serde_bencode::to_bytes(&PieceRequestPayloadSerde {
-                msg_type: MetadataMessageType::Request as u64,
-                piece: 0,
-            })?,
-        };
+        let metadata_ext_id = self
+            .peer_metadata_id
+            .context("Missing metadata extension id from handshake")?;
+
+        let payload = serde_bencode::to_bytes(&PieceRequestPayloadSerde {
+            msg_type: MetadataMessageType::Request as u64,
+            piece: 0,
+        })?;
+
+        // For ut_metadata the extended message id is the per-peer metadata id we got from the
+        // handshake, and the payload itself is just the bencoded dictionary.
         conn.send(PeerCommand::Extended {
-            ext_id: METADATA_EXTENSION_ID,
-            payload: ext_message.to_bytes(),
+            ext_id: metadata_ext_id,
+            payload,
         })?;
         Ok(())
     }
@@ -186,19 +188,13 @@ mod tests {
 
     #[test]
     fn test_piece_request_message() {
-        let ext_message = ExtensionMessage {
-            msg_id: 227,
-            payload: serde_bencode::to_bytes(&PieceRequestPayloadSerde {
-                msg_type: MetadataMessageType::Request as u64,
-                piece: 0,
-            })
-            .unwrap(),
-        };
+        let payload = serde_bencode::to_bytes(&PieceRequestPayloadSerde {
+            msg_type: MetadataMessageType::Request as u64,
+            piece: 0,
+        })
+        .unwrap();
 
-        let bytes = ext_message.to_bytes();
-
-        let deserialized: PieceRequestPayloadSerde =
-            serde_bencode::from_bytes(&bytes[1..]).unwrap();
+        let deserialized: PieceRequestPayloadSerde = serde_bencode::from_bytes(&payload).unwrap();
         assert_eq!(deserialized.msg_type, 0);
         assert_eq!(deserialized.piece, 0);
     }
