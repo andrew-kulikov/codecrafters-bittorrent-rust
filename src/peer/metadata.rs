@@ -207,7 +207,7 @@ impl MetadataFetcher {
             _ => {}
         }
 
-        let data = &payload[METADATA_RESPONSE_BENCODE_LEN..];
+        let data = &payload[METADATA_RESPONSE_BENCODE_LEN - 1..];
         if data.is_empty() {
             bail!("Empty metadata piece received");
         }
