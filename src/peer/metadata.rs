@@ -1,8 +1,8 @@
 use anyhow::{bail, Context};
 use serde::{Deserialize, Serialize};
 use serde_bencode::{de::Deserializer, value::Value};
-use std::io::Cursor;
 use std::collections::HashSet;
+use std::io::Cursor;
 
 use crate::{
     peer::{
@@ -98,7 +98,7 @@ impl MetadataFetcher {
                 compact: 1,
             };
 
-            let tracker_response = tracker::announce(tracker_url, tracker_request)
+            let tracker_response = tracker::announce(tracker_url.clone(), tracker_request)
                 .context("Failed to get tracker response")?;
             tracker_response.peers
         };
@@ -119,10 +119,14 @@ impl MetadataFetcher {
                             let v: Value = serde_bencode::from_bytes(bytes)?;
                             log::debug("MetadataFetcher", &format!("Parsed metainfo: {:?}", v));
                             log::debug("MetadataFetcher", &format!("Source bytes: {:?}", bytes));
-                            Some(
-                                TorrentMetainfo::from_bytes(bytes)
-                                    .context("Failed to parse received metadata")?,
-                            )
+                            let metainfo =
+                                TorrentMetainfo::from_info_bytes(tracker_url.clone(), bytes)?;
+                            
+                            if metainfo.info_hash != info_hash {
+                                bail!("Downloaded metadata info hash does not match expected info hash");
+                            }
+
+                            Some(metainfo)
                         }
                         None => None,
                     };

@@ -47,6 +47,29 @@ impl TorrentMetainfo {
         })
     }
 
+    pub fn from_info_bytes(announce: String, info_bytes: &[u8]) -> anyhow::Result<Self> {
+        let info_dict: InfoDictionary =
+            serde_bencode::from_bytes(info_bytes).expect("Failed to decode info dictionary");
+
+        let length = info_dict
+            .length
+            .or_else(|| {
+                info_dict
+                    .files
+                    .as_ref()
+                    .map(|files| files.iter().map(|f| f.length).sum())
+            })
+            .unwrap_or(0);
+
+        Ok(TorrentMetainfo {
+            announce,
+            piece_length: info_dict.piece_length,
+            pieces: info_dict.pieces,
+            length,
+            info_hash: utils::sha1(info_bytes),
+        })
+    }
+
     pub fn get_info_hash_hex(&self) -> String {
         hex::encode(&self.info_hash)
     }
