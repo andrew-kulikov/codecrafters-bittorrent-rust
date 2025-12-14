@@ -46,7 +46,11 @@ fn main() {
         parse_magnet_link(&args[2]);
     } else if command == "magnet_handshake" {
         // magnet_handshake <magnet link>
+        // link sample: magnet:?xt=urn:btih:ad42ce8109f54c99613ce38f9b4d87e70f24a165&dn=magnet1.gif&tr=http%3A%2F%2Fbittorrent-test-tracker.codecrafters.io%2Fannounce
         magnet_handshake(&args[2]);
+    } else if command == "magnet_info" {
+        // magnet_info <magnet link>
+        magnet_info(&args[2]);
     } else {
         println!("unknown command: {}", args[1])
     }
@@ -191,8 +195,8 @@ fn parse_magnet_link(link: &str) {
 /// magnet links | task 3: Send extension handshake
 /// magnet links | task 4: Receive extension handshake
 fn magnet_handshake(link: &str) {
-    let mut metadata_fetcher =
-        MetadataFetcher::new(link, PEER_ID.to_string(), true).expect("Failed to create metadata fetcher");
+    let mut metadata_fetcher = MetadataFetcher::new(link, PEER_ID.to_string(), true)
+        .expect("Failed to create metadata fetcher");
     let result = metadata_fetcher.run().expect("Metadata fetcher failed");
     if let Some(peer_id) = result.peer_id {
         println!("Peer ID: {}", hex::encode(peer_id));
@@ -204,8 +208,8 @@ fn magnet_handshake(link: &str) {
 
 /// magnet links | task 5: Request metadata
 fn magnet_info(link: &str) {
-    let mut metadata_fetcher =
-        MetadataFetcher::new(link, PEER_ID.to_string(), false).expect("Failed to create metadata fetcher");
+    let mut metadata_fetcher = MetadataFetcher::new(link, PEER_ID.to_string(), false)
+        .expect("Failed to create metadata fetcher");
     let result = metadata_fetcher.run().expect("Metadata fetcher failed");
     if let Some(peer_id) = result.peer_id {
         println!("Peer ID: {}", hex::encode(peer_id));

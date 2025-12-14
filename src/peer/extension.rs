@@ -17,6 +17,12 @@ pub struct ExtensionHandshakePayload {
     pub client_name: Option<String>,
 }
 
+pub struct ExtensionMessage {
+    // Id of particular extension received on handshake
+    pub msg_id: u8,
+    pub payload: Vec<u8>,
+}
+
 impl ExtensionHandshakePayload {
     pub fn new() -> Self {
         Self {
@@ -69,6 +75,15 @@ impl ExtensionHandshakePayload {
             }
         }
         None
+    }
+}
+
+impl ExtensionMessage {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(1 + self.payload.len());
+        buf.push(self.msg_id as u8);
+        buf.extend_from_slice(&self.payload);
+        buf
     }
 }
 

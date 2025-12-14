@@ -1,9 +1,10 @@
 use anyhow::Context;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     peer::{
-        ExtensionHandshakePayload, PeerCommand, PeerConnection, PeerEvent, PeerSession,
-        PeerSessionConfig, PeerSessionHandler, SessionControl,
+        extension::ExtensionHandshakePayload, ExtensionMessage, PeerCommand, PeerConnection,
+        PeerEvent, PeerSession, PeerSessionConfig, PeerSessionHandler, SessionControl,
     },
     torrent::MagnetLink,
     tracker,
@@ -11,17 +12,26 @@ use crate::{
 
 pub struct MetadataFetcher {
     magnet_link: MagnetLink,
-    ext_handshake_sent: bool,
     client_id: String,
-    // For debugging purposes only
-    handshake_only: bool,
+
+    ext_handshake_sent: bool,
+
     peer_metadata_id: Option<u8>,
     peer_id: Option<Vec<u8>>,
+
+    // For debugging purposes only
+    handshake_only: bool,
 }
 
 pub struct MetadataFetchResult {
     pub peer_id: Option<Vec<u8>>,
     pub peer_metadata_id: Option<u8>,
+}
+
+enum MetadataMessageType {
+    Request = 0,
+    Data = 1,
+    Reject = 2,
 }
 
 impl MetadataFetcher {
@@ -98,6 +108,21 @@ impl MetadataFetcher {
             "No peers responded with extension handshake"
         ))
     }
+
+    fn request_metadata(&self, conn: &PeerConnection) -> anyhow::Result<()> {
+        let ext_message = ExtensionMessage {
+            msg_id: MetadataMessageType::Request as u8,
+            payload: serde_bencode::to_bytes(&PieceRequestPayloadSerde {
+                msg_type: self.peer_metadata_id.unwrap() as u32,
+                piece: 0,
+            })?,
+        };
+        conn.send(PeerCommand::Extended {
+            ext_id: self.peer_metadata_id.unwrap(),
+            payload: ext_message.to_bytes(),
+        })?;
+        Ok(())
+    }
 }
 
 impl PeerSessionHandler for MetadataFetcher {
@@ -131,14 +156,24 @@ impl PeerSessionHandler for MetadataFetcher {
                 if let Some(metadata_ext_id) = ext_payload.get_metadata_extension_id() {
                     self.peer_metadata_id = Some(metadata_ext_id);
                 }
+
                 // Terminate for magnet_handshake test
-                if self.handshake_only {
-                    return Ok(SessionControl::Stop);
+                match self.handshake_only {
+                    true => Ok(SessionControl::Stop),
+                    false => {
+                        self.request_metadata(conn)?;
+                        Ok(SessionControl::Continue)
+                    }
                 }
-                Ok(SessionControl::Continue)
             }
             PeerEvent::IoError(err) => Err(anyhow::anyhow!(err)),
             _ => Ok(SessionControl::Continue),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PieceRequestPayloadSerde {
+    pub msg_type: u32,
+    pub piece: u32,
 }
