@@ -180,7 +180,7 @@ impl MetadataFetcher {
     ) -> anyhow::Result<bool> {
         const METADATA_RESPONSE_BENCODE_LEN: usize = 44;
 
-        let mininal_allowed_len = METADATA_RESPONSE_BENCODE_LEN+ 1 /* at least 1 byte of data */;
+        let mininal_allowed_len = METADATA_RESPONSE_BENCODE_LEN + 1 /* at least 1 byte of data */;
         if payload.len() < mininal_allowed_len {
             bail!(
                 "Metadata message too short, expected at least {} bytes, got {}",
@@ -314,6 +314,14 @@ impl PeerSessionHandler for MetadataFetcher {
                 self.total_size = Some(metadata_size as usize);
                 self.metadata_bytes = Some(vec![0u8; metadata_size as usize]);
 
+                log::debug(
+                    "MetadataFetcher",
+                    &format!(
+                        "Received extension handshake. id: {:?}, metadata size: {} bytes",
+                        self.peer_metadata_id, metadata_size
+                    ),
+                );
+                
                 // Terminate for magnet_handshake test
                 match self.handshake_only {
                     true => Ok(SessionControl::Stop),
