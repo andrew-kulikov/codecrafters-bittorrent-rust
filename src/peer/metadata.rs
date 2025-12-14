@@ -1,6 +1,7 @@
 use anyhow::{bail, Context};
 use serde::{Deserialize, Serialize};
-use serde_bencode::value::Value;
+use serde_bencode::{de::Deserializer, value::Value};
+use std::io::Cursor;
 use std::collections::HashSet;
 
 use crate::{
@@ -184,20 +185,10 @@ impl MetadataFetcher {
         conn: &PeerConnection,
         payload: &[u8],
     ) -> anyhow::Result<bool> {
-        const METADATA_RESPONSE_BENCODE_LEN: usize = 44;
-
-        let mininal_allowed_len = METADATA_RESPONSE_BENCODE_LEN + 1 /* at least 1 byte of data */;
-        if payload.len() < mininal_allowed_len {
-            bail!(
-                "Metadata message too short, expected at least {} bytes, got {}",
-                mininal_allowed_len,
-                payload.len()
-            );
-        }
-
-        // Format: {'msg_type': 1, 'piece': 0, 'total_size': XXXX} - always 44 bytes
-        let response: DataResponsePayloadSerde =
-            serde_bencode::from_bytes(&payload[0..METADATA_RESPONSE_BENCODE_LEN - 1])?;
+        let mut cursor = Cursor::new(payload);
+        let mut deserializer = Deserializer::new(&mut cursor);
+        let response: DataResponsePayloadSerde = Deserialize::deserialize(&mut deserializer)?;
+        let header_len = cursor.position() as usize;
 
         match response.msg_type {
             x if x == MetadataMessageType::Request as u64 => {
@@ -213,7 +204,9 @@ impl MetadataFetcher {
             _ => {}
         }
 
-        let data = &payload[METADATA_RESPONSE_BENCODE_LEN - 1..];
+        let data = payload
+            .get(header_len..)
+            .context("Metadata message missing piece data")?;
         if data.is_empty() {
             bail!("Empty metadata piece received");
         }
@@ -401,7 +394,12 @@ mod tests {
         })
         .unwrap();
 
-        assert_eq!(payload.len(), 44);
+        let mut cursor = Cursor::new(&payload);
+        let mut deserializer = Deserializer::new(&mut cursor);
+        let _response: DataResponsePayloadSerde =
+            Deserialize::deserialize(&mut deserializer).unwrap();
+
+        assert_eq!(cursor.position() as usize, payload.len());
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
