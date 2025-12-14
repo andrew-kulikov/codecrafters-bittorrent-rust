@@ -113,9 +113,9 @@ impl MetadataFetcher {
 
     fn request_metadata(&self, conn: &PeerConnection) -> anyhow::Result<()> {
         let ext_message = ExtensionMessage {
-            msg_id: MetadataMessageType::Request as u8,
+            msg_id: self.peer_metadata_id.unwrap(),
             payload: serde_bencode::to_bytes(&PieceRequestPayloadSerde {
-                msg_type: self.peer_metadata_id.unwrap() as u32,
+                msg_type: MetadataMessageType::Request as u64,
                 piece: 0,
             })?,
         };
@@ -176,6 +176,30 @@ impl PeerSessionHandler for MetadataFetcher {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PieceRequestPayloadSerde {
-    pub msg_type: u32,
-    pub piece: u32,
+    pub msg_type: u64,
+    pub piece: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_piece_request_message() {
+        let ext_message = ExtensionMessage {
+            msg_id: 227,
+            payload: serde_bencode::to_bytes(&PieceRequestPayloadSerde {
+                msg_type: MetadataMessageType::Request as u64,
+                piece: 0,
+            })
+            .unwrap(),
+        };
+
+        let bytes = ext_message.to_bytes();
+
+        let deserialized: PieceRequestPayloadSerde =
+            serde_bencode::from_bytes(&bytes[1..]).unwrap();
+        assert_eq!(deserialized.msg_type, 0);
+        assert_eq!(deserialized.piece, 0);
+    }
 }
