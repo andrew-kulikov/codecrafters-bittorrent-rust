@@ -4,11 +4,10 @@ use std::collections::HashSet;
 
 use crate::{
     peer::{
-        extension::ExtensionHandshakePayload, PeerCommand, PeerConnection, PeerEvent, PeerSession,
-        PeerSessionConfig, PeerSessionHandler, SessionControl,
+        PeerCommand, PeerConnection, PeerEvent, PeerSession, PeerSessionConfig, PeerSessionHandler, SessionControl, extension::ExtensionHandshakePayload
     },
     torrent::{MagnetLink, TorrentMetainfo},
-    tracker,
+    tracker, utils::log,
 };
 
 const METADATA_EXTENSION_NAME: &str = "ut_metadata";
@@ -109,20 +108,29 @@ impl MetadataFetcher {
                 PeerSessionConfig::default(),
             );
 
-            if let Ok(_) = session.run(self) {
-                let metainfo = match &self.metadata_bytes {
-                    Some(bytes) => Some(
-                        TorrentMetainfo::from_bytes(bytes)
-                            .context("Failed to parse received metadata")?,
-                    ),
-                    None => None,
-                };
+            match session.run(self) {
+                Ok(_) => {
+                    let metainfo = match &self.metadata_bytes {
+                        Some(bytes) => Some(
+                            TorrentMetainfo::from_bytes(bytes)
+                                .context("Failed to parse received metadata")?,
+                        ),
+                        None => None,
+                    };
 
-                return Ok(MetadataFetchResult {
-                    peer_id: self.peer_id.clone(),
-                    peer_metadata_id: self.peer_metadata_id,
-                    metainfo,
-                });
+                    return Ok(MetadataFetchResult {
+                        peer_id: self.peer_id.clone(),
+                        peer_metadata_id: self.peer_metadata_id,
+                        metainfo,
+                    });
+                }
+                Err(e) => {
+                    log::error(
+                        "MetadataFetcher",
+                        &format!("[{}] Session error: {:#}", peer, e),
+                    );
+                    continue;
+                }
             }
         }
 
