@@ -1,10 +1,7 @@
 use codecrafters_bittorrent::{
     bencode,
     download::{manager::DownloadManager, queue::PieceQueue, worker::PeerWorker},
-    peer::{
-        ExtensionHandshakePayload, HandshakeRequest, PeerCommand, PeerConnection, PeerEvent,
-        PeerSession, PeerSessionConfig, PeerSessionHandler, SessionControl,
-    },
+    peer::{metadata::MetadataFetcher, HandshakeRequest, PeerConnection},
     torrent::{MagnetLink, TorrentMetainfo},
     tracker::{self, Peer},
     utils::{log, RawBytesExt},
@@ -194,101 +191,26 @@ fn parse_magnet_link(link: &str) {
 /// magnet links | task 3: Send extension handshake
 /// magnet links | task 4: Receive extension handshake
 fn magnet_handshake(link: &str) {
-    // 1. Parse magnet link
-    let magnet_link = MagnetLink::parse(link).expect("Failed to parse magnet link");
-
-    // For now assume there is only one tracker
-    let tracker_url = magnet_link
-        .trackers
-        .iter()
-        .next()
-        .map(|url| url.to_string())
-        .expect("No trackers found");
-
-    // And only one info hash
-    let info_hash = magnet_link
-        .exact_topics
-        .iter()
-        .next()
-        .map(|topic| {
-            hex::decode(topic.get_hash().expect("Unsupported scheme"))
-                .expect("Invalid info hash hex")
-        })
-        .expect("No info hash found");
-
-    // 2. Announce to tracker and get peers
-    let peers = {
-        let tracker_request = tracker::TrackerRequest {
-            info_hash: info_hash.clone(),
-            peer_id: PEER_ID.to_string(),
-            port: 6881,
-            uploaded: 0,
-            downloaded: 0,
-            left: 999,
-            compact: 1,
-        };
-
-        let tracker_response = tracker::announce(tracker_url, tracker_request)
-            .expect("Failed to get tracker response");
-        tracker_response.peers
-    };
-    let peer = peers.first().expect("No peers available").clone();
-
-    // 3. Run a lightweight session that sends extension handshake and prints any reply
-    run_extension_handshake(peer, info_hash).expect("Extension handshake failed");
-}
-
-/// Minimal handler that just sends LTEP handshake and exits after first response.
-struct MagnetHandshakeHandler {
-    sent: bool,
-}
-
-impl PeerSessionHandler for MagnetHandshakeHandler {
-    fn on_connect(&mut self, conn: &PeerConnection) -> anyhow::Result<SessionControl> {
-        //conn.send(PeerCommand::Interested)?;
-        if let Some(peer_id) = &conn.peer_id {
-            println!("Peer ID: {}", hex::encode(peer_id));
-        }
-        Ok(SessionControl::Continue)
+    let mut metadata_fetcher =
+        MetadataFetcher::new(link, PEER_ID.to_string(), true).expect("Failed to create metadata fetcher");
+    let result = metadata_fetcher.run().expect("Metadata fetcher failed");
+    if let Some(peer_id) = result.peer_id {
+        println!("Peer ID: {}", hex::encode(peer_id));
     }
-
-    fn on_event(
-        &mut self,
-        conn: &PeerConnection,
-        event: PeerEvent,
-    ) -> anyhow::Result<SessionControl> {
-        match event {
-            PeerEvent::HandshakeComplete {
-                extension_supported,
-                ..
-            } => {
-                if extension_supported && !self.sent {
-                    let payload = ExtensionHandshakePayload::default_extensions().encode()?;
-                    conn.send(PeerCommand::Extended { ext_id: 0, payload })?;
-                    self.sent = true;
-                }
-                Ok(SessionControl::Continue)
-            }
-            PeerEvent::Extended { ext_id: 0, payload } => {
-                let ext_payload = ExtensionHandshakePayload::decode(&payload)?;
-                if let Some(metadata_ext_id) = ext_payload.get_metadata_extension_id() {
-                    println!("Peer Metadata Extension ID: {}", metadata_ext_id);
-                }
-                Ok(SessionControl::Stop)
-            }
-            PeerEvent::IoError(err) => Err(anyhow::anyhow!(err)),
-            _ => Ok(SessionControl::Continue),
-        }
+    if let Some(metadata_ext_id) = result.peer_metadata_id {
+        println!("Peer Metadata Extension ID: {}", metadata_ext_id);
     }
 }
 
-fn run_extension_handshake(peer: Peer, info_hash: Vec<u8>) -> anyhow::Result<()> {
-    let mut handler = MagnetHandshakeHandler { sent: false };
-    let session = PeerSession::new(
-        peer,
-        info_hash,
-        PEER_ID.to_string(),
-        PeerSessionConfig::default(),
-    );
-    session.run(&mut handler)
+/// magnet links | task 5: Request metadata
+fn magnet_info(link: &str) {
+    let mut metadata_fetcher =
+        MetadataFetcher::new(link, PEER_ID.to_string(), false).expect("Failed to create metadata fetcher");
+    let result = metadata_fetcher.run().expect("Metadata fetcher failed");
+    if let Some(peer_id) = result.peer_id {
+        println!("Peer ID: {}", hex::encode(peer_id));
+    }
+    if let Some(metadata_ext_id) = result.peer_metadata_id {
+        println!("Peer Metadata Extension ID: {}", metadata_ext_id);
+    }
 }

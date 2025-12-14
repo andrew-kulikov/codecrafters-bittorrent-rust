@@ -53,13 +53,17 @@ pub fn set_global_log_level(level: LogLevel) {
 }
 
 pub trait LogHandler: Send + Sync {
-    fn handle(&self, msg: &str);
+    fn handle(&self, level: LogLevel, msg: &str);
 }
 
 pub struct ConsoleLogger;
 
 impl LogHandler for ConsoleLogger {
-    fn handle(&self, msg: &str) {
+    fn handle(&self, level: LogLevel, msg: &str) {
+        if level == LogLevel::Error {
+            eprintln!("{}", msg);
+            return;
+        }
         println!("{}", msg);
     }
 }
@@ -86,47 +90,21 @@ pub fn log(level: LogLevel, name: &str, msg: &str) {
 
     let cur_thread = std::thread::current().id();
     let formatted_msg = format!("[{}] [{:?}] [{}] {}", level.as_str(), cur_thread, name, msg);
-    global_handler().handle(&formatted_msg);
-}
-
-pub fn log_with(handler: &dyn LogHandler, level: LogLevel, name: &str, msg: &str) {
-    if !should_log(level) {
-        return;
-    }
-
-    let cur_thread = std::thread::current().id();
-    let formatted_msg = format!("[{}] [{:?}] [{}] {}", level.as_str(), cur_thread, name, msg);
-    handler.handle(&formatted_msg);
+    global_handler().handle(level, &formatted_msg);
 }
 
 pub fn debug(name: &str, msg: &str) {
     log(LogLevel::Debug, name, msg);
 }
 
-pub fn debug_with(handler: &dyn LogHandler, name: &str, msg: &str) {
-    log_with(handler, LogLevel::Debug, name, msg);
-}
-
 pub fn info(name: &str, msg: &str) {
     log(LogLevel::Info, name, msg);
-}
-
-pub fn info_with(handler: &dyn LogHandler, name: &str, msg: &str) {
-    log_with(handler, LogLevel::Info, name, msg);
 }
 
 pub fn warn(name: &str, msg: &str) {
     log(LogLevel::Warning, name, msg);
 }
 
-pub fn warn_with(handler: &dyn LogHandler, name: &str, msg: &str) {
-    log_with(handler, LogLevel::Warning, name, msg);
-}
-
 pub fn error(name: &str, msg: &str) {
     log(LogLevel::Error, name, msg);
-}
-
-pub fn error_with(handler: &dyn LogHandler, name: &str, msg: &str) {
-    log_with(handler, LogLevel::Error, name, msg);
 }

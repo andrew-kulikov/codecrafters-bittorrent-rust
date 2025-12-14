@@ -1,5 +1,6 @@
-use crate::utils::RawBytesExt;
-use crate::{bencode, utils};
+use crate::utils;
+use serde::{Deserialize, Serialize};
+use serde_bytes;
 
 pub struct TorrentMetainfo {
     pub announce: String,
@@ -15,48 +16,24 @@ impl TorrentMetainfo {
     pub fn parse(file_path: &str) -> Self {
         // Read file contents
         let torrent_bytes = std::fs::read(file_path).expect("Failed to read torrent file");
-        let torrent_info = bencode::parse_bytes(torrent_bytes);
+        let torrent: TorrentFile = serde_bencode::from_bytes(&torrent_bytes)
+            .expect("Failed to decode torrent file");
 
-        // Extract fields
-        let announce = torrent_info
-            .get("announce")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+        let info_hash_bytes = serde_bencode::to_bytes(&torrent.info)
+            .expect("Failed to re-encode info dictionary for hashing");
 
-        let info_section = torrent_info
-            .get("info")
-            .expect("Missing 'info' dictionary in torrent file");
-
-        let piece_length = info_section
-            .get("piece length")
-            .and_then(|v| v.as_u64())
+        let length = torrent
+            .info
+            .length
+            .or_else(|| torrent.info.files.as_ref().map(|files| files.iter().map(|f| f.length).sum()))
             .unwrap_or(0);
-
-        let pieces_str = info_section
-            .get("pieces")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let pieces = pieces_str.to_raw_bytes();
-
-        let length = info_section
-            .get("length")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-
-        let info_hash = {
-            // TODO: Fix unwrap
-            let encoded_info = bencode::encode(info_section).unwrap();
-            utils::sha1(&encoded_info)
-        };
 
         TorrentMetainfo {
-            announce,
-            piece_length,
-            pieces,
+            announce: torrent.announce,
+            piece_length: torrent.info.piece_length,
+            pieces: torrent.info.pieces,
             length,
-            info_hash,
+            info_hash: utils::sha1(&info_hash_bytes),
         }
     }
 
@@ -82,4 +59,29 @@ impl TorrentMetainfo {
         let end = start + 20;
         &self.pieces[start..end]
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TorrentFile {
+    announce: String,
+    info: InfoDictionary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct InfoDictionary {
+    #[serde(rename = "piece length")]
+    piece_length: u64,
+    #[serde(with = "serde_bytes")]
+    pieces: Vec<u8>,
+    length: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    files: Option<Vec<FileEntry>>, // For multi-file torrents
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FileEntry {
+    length: u64,
+    path: Vec<String>,
 }

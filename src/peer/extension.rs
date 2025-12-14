@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
-
-use crate::bencode;
+use serde::{Deserialize, Serialize};
+use serde_bencode;
+use std::collections::BTreeMap;
 
 pub const METADATA_EXTENSION_NAME: &str = "ut_metadata";
 pub const METADATA_EXTENSION_ID: u8 = 17;
@@ -35,42 +35,30 @@ impl ExtensionHandshakePayload {
     }
 
     pub fn encode(&self) -> anyhow::Result<Vec<u8>> {
-        let extensions_dict = self
+        let extensions = self
             .extensions
             .iter()
-            .map(|(key, val)| (key.to_owned(), Value::Number((*val as i64).into())))
-            .collect::<serde_json::Map<_, _>>();
+            .map(|(name, id)| (name.clone(), *id))
+            .collect::<BTreeMap<_, _>>();
 
-        let json = json!({
-            "m": extensions_dict
-        });
-        let encoded = bencode::encode(&json)?;
-        Ok(encoded)
-    }
-
-    pub fn decode(_bytes: &[u8]) -> anyhow::Result<Self> {
-        let json = bencode::parse_bytes(_bytes.to_vec());
-
-        let extensions = if let Some(m_dict) = json.get("m").and_then(|v| v.as_object()) {
-            m_dict
-                .iter()
-                .filter_map(|(key, val)| val.as_i64().map(|num| (key.clone(), num as u8)))
-                .collect::<Vec<(String, u8)>>()
-        } else {
-            Vec::new()
+        let payload = ExtensionHandshakeSerde {
+            extensions,
+            metadata_size: self.metadata_size,
+            client_name: self.client_name.clone(),
         };
 
-        let metadata_size = json.get("metadata_size").and_then(|v| v.as_u64());
+        Ok(serde_bencode::to_bytes(&payload)?)
+    }
 
-        let client_name = json
-            .get("client_name")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+    pub fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
+        let payload: ExtensionHandshakeSerde = serde_bencode::from_bytes(bytes)?;
+
+        let extensions = payload.extensions.into_iter().collect::<Vec<_>>();
 
         Ok(ExtensionHandshakePayload {
             extensions,
-            metadata_size,
-            client_name,
+            metadata_size: payload.metadata_size,
+            client_name: payload.client_name,
         })
     }
 
@@ -82,4 +70,14 @@ impl ExtensionHandshakePayload {
         }
         None
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ExtensionHandshakeSerde {
+    #[serde(rename = "m")]
+    extensions: BTreeMap<String, u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata_size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_name: Option<String>,
 }

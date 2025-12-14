@@ -4,6 +4,7 @@ use std::thread;
 
 use crate::torrent::TorrentMetainfo;
 use crate::tracker;
+use crate::utils::log;
 
 use super::queue::PieceQueue;
 use super::worker::PeerWorker;
@@ -39,10 +40,10 @@ impl DownloadManager {
 
         let tracker_response = tracker::announce(self.metainfo.announce.clone(), tracker_request)?;
         let peers = tracker_response.peers;
-        println!("[DownloadManager] Found {} peers", peers.len());
+        log::info("DownloadManager", &format!("Found {} peers", peers.len()));
 
         let num_pieces = self.metainfo.get_piece_count() as u64;
-        println!("[DownloadManager] Total pieces to download: {}", num_pieces);
+        log::info("DownloadManager", &format!("Total pieces to download: {}", num_pieces));
 
         let piece_ids = (0..num_pieces as u32).collect::<Vec<u32>>();
         let queue = Arc::new(PieceQueue::new(&piece_ids));
@@ -72,7 +73,7 @@ impl DownloadManager {
                     output_dir.to_str().unwrap().to_string(),
                 );
                 if let Err(e) = worker.run() {
-                    eprintln!("Worker failed: {}", e);
+                    log::error("DownloadManager", &format!("Worker failed: {}", e));
                 }
             });
             handles.push(handle);
