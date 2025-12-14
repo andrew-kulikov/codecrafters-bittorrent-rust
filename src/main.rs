@@ -7,7 +7,7 @@ use codecrafters_bittorrent::{
     },
     torrent::{MagnetLink, TorrentMetainfo},
     tracker::{self, Peer},
-    utils::RawBytesExt,
+    utils::{log, RawBytesExt},
 };
 use std::env;
 use std::sync::Arc;
@@ -15,6 +15,10 @@ use std::sync::Arc;
 const PEER_ID: &str = "-CT0001-123456789012";
 
 fn main() {
+    let console_log_handler = log::ConsoleLogger;
+    log::set_global_log_level(log::LogLevel::Info);
+    log::set_global_log_handler(Box::new(console_log_handler));
+
     let args: Vec<String> = env::args().collect();
     let command = &args[1];
 
@@ -46,7 +50,6 @@ fn main() {
     } else if command == "magnet_handshake" {
         // magnet_handshake <magnet link>
         magnet_handshake(&args[2]);
-        
     } else {
         println!("unknown command: {}", args[1])
     }

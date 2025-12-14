@@ -10,7 +10,7 @@ use crate::peer::{
 };
 use crate::torrent::TorrentMetainfo;
 use crate::tracker::Peer;
-use crate::utils::hash;
+use crate::utils::{hash, log};
 
 pub struct PeerWorker {
     peer: Peer,
@@ -99,10 +99,6 @@ impl PeerWorker {
             piece_len
         };
         current_piece_len as u32
-    }
-
-    fn log(&self, message: &str) {
-        println!("[PeerWorker] [{}] {}", self.peer, message);
     }
 
     fn start_next_piece(&mut self, conn: &PeerConnection) -> anyhow::Result<()> {
@@ -204,6 +200,11 @@ impl PeerWorker {
         if let Some(state) = self.active_download.take() {
             self.queue.push(state.index);
         }
+    }
+
+    
+    fn log(&self, message: &str) {
+        log::debug("PeerWorker", &format!("[{}] {}", self.peer, message));
     }
 }
 

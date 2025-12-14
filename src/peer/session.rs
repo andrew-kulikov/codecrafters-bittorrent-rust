@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::peer::{HandshakeRequest, PeerConnection};
 use crate::tracker::Peer;
-use crate::utils::RawBytesExt;
+use crate::utils::{RawBytesExt, log};
 
 /// How the session loop should proceed after handling an event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,10 +75,9 @@ impl PeerSession {
         let mut attempts = 0u32;
 
         while !handler.should_stop() {
-            println!(
-                "[PeerSession] [{}] Connecting (attempt {})",
-                self.peer,
-                attempts + 1
+            log::debug(
+                "PeerSession",
+                &format!("[{}] Connecting (attempt {})", self.peer, attempts + 1),
             );
             let handshake_req = HandshakeRequest::new_with_extension_support(
                 self.info_hash.clone(),
@@ -91,9 +90,9 @@ impl PeerSession {
                     conn
                 }
                 Err(e) => {
-                    println!(
-                        "[PeerSession] [{}] Failed to connect: {}",
-                        self.peer, e
+                    log::debug(
+                        "PeerSession",
+                        &format!("[{}] Failed to connect: {}", self.peer, e),
                     );
                     attempts += 1;
                     std::thread::sleep(self.backoff_delay(attempts));
