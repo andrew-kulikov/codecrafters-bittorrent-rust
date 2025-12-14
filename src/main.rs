@@ -215,7 +215,12 @@ fn magnet_handshake(link: &str) {
 fn magnet_info(link: &str) {
     let mut metadata_fetcher = MetadataFetcher::new(link, PEER_ID.to_string(), false)
         .expect("Failed to create metadata fetcher");
-    let result = metadata_fetcher.run().expect("Metadata fetcher failed");
+    let result = metadata_fetcher.run();
+    if let Err(e) = &result {
+        println!("Metadata fetcher failed: {:#}", e);
+        return;
+    }
+    let result = result.unwrap();
     if let Some(peer_id) = result.peer_id {
         println!("Peer ID: {}", hex::encode(peer_id));
     }
