@@ -4,10 +4,12 @@ use std::collections::HashSet;
 
 use crate::{
     peer::{
-        PeerCommand, PeerConnection, PeerEvent, PeerSession, PeerSessionConfig, PeerSessionHandler, SessionControl, extension::ExtensionHandshakePayload
+        extension::ExtensionHandshakePayload, PeerCommand, PeerConnection, PeerEvent, PeerSession,
+        PeerSessionConfig, PeerSessionHandler, SessionControl,
     },
     torrent::{MagnetLink, TorrentMetainfo},
-    tracker, utils::log,
+    tracker,
+    utils::log,
 };
 
 const METADATA_EXTENSION_NAME: &str = "ut_metadata";
@@ -178,8 +180,7 @@ impl MetadataFetcher {
     ) -> anyhow::Result<bool> {
         const METADATA_RESPONSE_BENCODE_LEN: usize = 44;
 
-        let mininal_allowed_len =
-            METADATA_RESPONSE_BENCODE_LEN + 1 /* version byte */ + 1 /* at least 1 byte of data */;
+        let mininal_allowed_len = METADATA_RESPONSE_BENCODE_LEN+ 1 /* at least 1 byte of data */;
         if payload.len() < mininal_allowed_len {
             bail!(
                 "Metadata message too short, expected at least {} bytes, got {}",
@@ -188,13 +189,9 @@ impl MetadataFetcher {
             );
         }
 
-        if payload[0] != MY_METADATA_EXTENSION_MESSAGE_ID {
-            bail!("Unexpected metadata message id: {}", payload[0]);
-        }
-
         // Format: {'msg_type': 1, 'piece': 0, 'total_size': XXXX} - always 44 bytes
         let response: DataResponsePayloadSerde =
-            serde_bencode::from_bytes(&payload[1..METADATA_RESPONSE_BENCODE_LEN])?;
+            serde_bencode::from_bytes(&payload[0..METADATA_RESPONSE_BENCODE_LEN - 1])?;
 
         match response.msg_type {
             x if x == MetadataMessageType::Request as u64 => {

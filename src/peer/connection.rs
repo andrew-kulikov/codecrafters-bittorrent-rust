@@ -309,7 +309,6 @@ fn read_one_message(stream: &Arc<Mutex<TcpStream>>) -> anyhow::Result<PeerEvent>
             } else {
                 payload_buf[1..].to_vec()
             };
-            // TODO: Handle ext_id == 0 (extension handshake) when implementing LTEP.
             PeerEvent::Extended { ext_id, payload }
         }
         other => PeerEvent::Unknown {
