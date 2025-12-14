@@ -10,6 +10,8 @@ use crate::{
     tracker,
 };
 
+const METADATA_EXTENSION_ID: u8 = 20;
+
 pub struct MetadataFetcher {
     magnet_link: MagnetLink,
     client_id: String,
@@ -118,7 +120,7 @@ impl MetadataFetcher {
             })?,
         };
         conn.send(PeerCommand::Extended {
-            ext_id: self.peer_metadata_id.unwrap(),
+            ext_id: METADATA_EXTENSION_ID,
             payload: ext_message.to_bytes(),
         })?;
         Ok(())

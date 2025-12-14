@@ -3,7 +3,7 @@ use serde_bencode;
 use std::collections::BTreeMap;
 
 pub const METADATA_EXTENSION_NAME: &str = "ut_metadata";
-pub const METADATA_EXTENSION_ID: u8 = 17;
+pub const OUR_METADATA_EXTENSION_MESSAGE_ID: u8 = 17;
 
 /// Placeholder for incoming/outgoing BEP-10 extension handshake payload.
 /// See: https://www.bittorrent.org/beps/bep_0010.html
@@ -34,7 +34,7 @@ impl ExtensionHandshakePayload {
 
     pub fn default_extensions() -> ExtensionHandshakePayload {
         ExtensionHandshakePayload {
-            extensions: vec![(METADATA_EXTENSION_NAME.to_string(), METADATA_EXTENSION_ID)],
+            extensions: vec![(METADATA_EXTENSION_NAME.to_string(), OUR_METADATA_EXTENSION_MESSAGE_ID)],
             metadata_size: None,
             client_name: None,
         }

@@ -226,6 +226,7 @@ impl PeerSessionHandler for PeerWorker {
         event: PeerEvent,
     ) -> anyhow::Result<SessionControl> {
         match event {
+            // TODO: Remove extension support from download worker. We expect here that metadata already received.
             PeerEvent::HandshakeComplete {
                 extension_supported,
                 ..
