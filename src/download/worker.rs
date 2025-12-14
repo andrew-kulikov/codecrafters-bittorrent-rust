@@ -1,7 +1,7 @@
 use std::cmp::min;
 use std::sync::Arc;
 
-use anyhow::{anyhow, ensure};
+use anyhow::anyhow;
 
 use super::queue::PieceQueue;
 use crate::peer::{
@@ -19,6 +19,14 @@ pub struct PeerWorker {
     client_id: String,
     output_dir: String,
     config: PeerSessionConfig,
+    active_download: Option<DownloadState>,
+}
+
+struct DownloadState {
+    index: u32,
+    offset: u32,
+    length: u32,
+    buffer: Vec<u8>,
 }
 
 impl PeerWorker {
@@ -37,6 +45,7 @@ impl PeerWorker {
             client_id,
             output_dir,
             config,
+            active_download: None,
         }
     }
 
@@ -68,86 +77,6 @@ impl PeerWorker {
         session.run(self)
     }
 
-    fn download_all_pieces(&self, conn: &PeerConnection) -> anyhow::Result<()> {
-        while let Some(piece_index) = self.queue.pop() {
-            if self.queue.is_shutdown() {
-                break;
-            }
-
-            let piece_len = self.get_piece_len(piece_index);
-            self.log(&format!(
-                "Downloading piece {} ({} bytes)",
-                piece_index, piece_len
-            ));
-
-            let mut buffer = vec![0u8; piece_len as usize];
-            match self.download_single_piece(conn, piece_index, &mut buffer) {
-                Ok(_) => {
-                    self.persist_piece(piece_index, &buffer)?;
-                    self.queue.mark_completed();
-                }
-                Err(e) => {
-                    self.log(&format!("Failed piece {}: {}", piece_index, e));
-                    self.queue.push(piece_index);
-                    return Err(e);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn download_single_piece(
-        &self,
-        conn: &PeerConnection,
-        piece_index: u32,
-        buffer: &mut [u8],
-    ) -> anyhow::Result<()> {
-        let mut offset: u32 = 0;
-        let piece_len: u32 = buffer.len() as u32;
-
-        while offset < piece_len {
-            let request_len = min(1 << 14, piece_len - offset);
-            conn.send(PeerCommand::Request {
-                index: piece_index,
-                begin: offset,
-                length: request_len,
-            })?;
-
-            loop {
-                match conn.next_event() {
-                    Some(PeerEvent::Piece { index, begin, data })
-                        if index == piece_index && begin == offset =>
-                    {
-                        let end = (begin + data.len() as u32) as usize;
-                        buffer[begin as usize..end].copy_from_slice(&data);
-                        offset += data.len() as u32;
-                        break;
-                    }
-                    Some(PeerEvent::Choke) => return Err(anyhow!("choked mid-piece")),
-                    Some(PeerEvent::IoError(err)) => return Err(anyhow!(err)),
-                    Some(PeerEvent::Extended { .. }) => {
-                        // TODO: handle extension messages when implemented.
-                    }
-                    Some(_) => {
-                        // Ignore unrelated events.
-                    }
-                    None => return Err(anyhow!("connection closed")),
-                }
-            }
-        }
-
-        // Validate hash
-        let expected = self.metainfo.get_piece_hash_bytes(piece_index as usize);
-        let actual = hash::sha1(buffer);
-        ensure!(
-            expected == actual.as_slice(),
-            "hash mismatch for piece {}",
-            piece_index
-        );
-
-        Ok(())
-    }
-
     fn persist_piece(&self, piece_index: u32, data: &[u8]) -> anyhow::Result<()> {
         let path = std::path::Path::new(&self.output_dir).join(format!("piece_{}", piece_index));
         std::fs::write(path, data)?;
@@ -175,6 +104,107 @@ impl PeerWorker {
     fn log(&self, message: &str) {
         println!("[PeerWorker] [{}] {}", self.peer, message);
     }
+
+    fn start_next_piece(&mut self, conn: &PeerConnection) -> anyhow::Result<()> {
+        if self.queue.is_shutdown() {
+            return Ok(());
+        }
+
+        while let Some(piece_index) = self.queue.pop() {
+            let piece_len = self.get_piece_len(piece_index);
+            self.log(&format!(
+                "Downloading piece {} ({} bytes)",
+                piece_index, piece_len
+            ));
+
+            self.active_download = Some(DownloadState {
+                index: piece_index,
+                offset: 0,
+                length: piece_len,
+                buffer: vec![0u8; piece_len as usize],
+            });
+
+            self.send_next_request(conn)?;
+            return Ok(());
+        }
+
+        Ok(())
+    }
+
+    fn send_next_request(&self, conn: &PeerConnection) -> anyhow::Result<()> {
+        if let Some(state) = &self.active_download {
+            if state.offset >= state.length {
+                return Ok(());
+            }
+
+            let request_len = min(1 << 14, state.length - state.offset);
+            conn.send(PeerCommand::Request {
+                index: state.index,
+                begin: state.offset,
+                length: request_len,
+            })?;
+        }
+        Ok(())
+    }
+
+    fn handle_piece_event(
+        &mut self,
+        conn: &PeerConnection,
+        index: u32,
+        begin: u32,
+        data: Vec<u8>,
+    ) -> anyhow::Result<SessionControl> {
+        let Some(state) = self.active_download.as_mut() else {
+            return Ok(SessionControl::Continue);
+        };
+
+        if state.index != index || state.offset != begin {
+            return Ok(SessionControl::Continue);
+        }
+
+        let end = (begin + data.len() as u32) as usize;
+        if end > state.buffer.len() {
+            self.abandon_active_piece();
+            return Err(anyhow!("piece block overruns buffer"));
+        }
+        state.buffer[begin as usize..end].copy_from_slice(&data);
+        state.offset += data.len() as u32;
+
+        if state.offset >= state.length {
+            let finished = self
+                .active_download
+                .take()
+                .expect("active download should exist when finishing piece");
+
+            let expected = self
+                .metainfo
+                .get_piece_hash_bytes(finished.index as usize);
+            let actual = hash::sha1(&finished.buffer);
+            if expected != actual.as_slice() {
+                self.queue.push(finished.index);
+                return Err(anyhow!("hash mismatch for piece {}", finished.index));
+            }
+
+            self.persist_piece(finished.index, &finished.buffer)?;
+            self.queue.mark_completed();
+
+            if self.queue.is_shutdown() {
+                return Ok(SessionControl::Stop);
+            }
+
+            self.start_next_piece(conn)?;
+        } else {
+            self.send_next_request(conn)?;
+        }
+
+        Ok(SessionControl::Continue)
+    }
+
+    fn abandon_active_piece(&mut self) {
+        if let Some(state) = self.active_download.take() {
+            self.queue.push(state.index);
+        }
+    }
 }
 
 impl PeerSessionHandler for PeerWorker {
@@ -184,6 +214,7 @@ impl PeerSessionHandler for PeerWorker {
 
     fn on_connect(&mut self, conn: &PeerConnection) -> anyhow::Result<SessionControl> {
         // Send interested immediately; we tolerate extension handshake arriving anytime.
+        self.abandon_active_piece();
         conn.send(PeerCommand::Interested)?;
         Ok(SessionControl::Continue)
     }
@@ -209,19 +240,36 @@ impl PeerSessionHandler for PeerWorker {
             }
             PeerEvent::Choke => {
                 self.log("Choked by peer; will reconnect");
+                self.abandon_active_piece();
                 Ok(SessionControl::Reconnect)
             }
             PeerEvent::Unchoke => {
-                // Once unchoked, attempt to download until error or completion.
-                if let Err(e) = self.download_all_pieces(conn) {
-                    return Err(e);
+                if self.active_download.is_some() {
+                    self.send_next_request(conn)?;
+                } else {
+                    self.start_next_piece(conn)?;
                 }
-                if self.queue.is_shutdown() {
-                    return Ok(SessionControl::Stop);
+
+                if self.queue.is_shutdown() && self.active_download.is_none() {
+                    Ok(SessionControl::Stop)
+                } else {
+                    Ok(SessionControl::Continue)
                 }
+            }
+            PeerEvent::Piece { index, begin, data } =>
+                self.handle_piece_event(conn, index, begin, data),
+            PeerEvent::Extended { ext_id: 0, payload } => {
+                // TODO: Save extension ids
+                self.log(&format!(
+                    "Received extension handshake ({} bytes)",
+                    payload.len()
+                ));
                 Ok(SessionControl::Continue)
             }
-            PeerEvent::IoError(err) => Err(anyhow!(err)),
+            PeerEvent::IoError(err) => {
+                self.abandon_active_piece();
+                Err(anyhow!(err))
+            }
             _ => {
                 // For now ignore other events; future: handle bitfield/have/extended.
                 Ok(SessionControl::Continue)

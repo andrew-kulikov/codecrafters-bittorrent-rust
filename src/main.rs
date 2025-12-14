@@ -189,6 +189,7 @@ fn parse_magnet_link(link: &str) {
 
 /// magnet links | task 2: Announce extension support
 /// magnet links | task 3: Send extension handshake
+/// magnet links | task 4: Receive extension handshake
 fn magnet_handshake(link: &str) {
     // 1. Parse magnet link
     let magnet_link = MagnetLink::parse(link).expect("Failed to parse magnet link");
