@@ -1,5 +1,6 @@
 use anyhow::{bail, Context};
 use serde::{Deserialize, Serialize};
+use serde_bencode::value::Value;
 use std::collections::HashSet;
 
 use crate::{
@@ -113,10 +114,14 @@ impl MetadataFetcher {
             match session.run(self) {
                 Ok(_) => {
                     let metainfo = match &self.metadata_bytes {
-                        Some(bytes) => Some(
-                            TorrentMetainfo::from_bytes(bytes)
-                                .context("Failed to parse received metadata")?,
-                        ),
+                        Some(bytes) => {
+                            let v: Value = serde_bencode::from_bytes(bytes)?;
+                            println!("{:#?}", v);
+                            Some(
+                                TorrentMetainfo::from_bytes(bytes)
+                                    .context("Failed to parse received metadata")?,
+                            )
+                        }
                         None => None,
                     };
 
@@ -321,7 +326,7 @@ impl PeerSessionHandler for MetadataFetcher {
                         self.peer_metadata_id, metadata_size
                     ),
                 );
-                
+
                 // Terminate for magnet_handshake test
                 match self.handshake_only {
                     true => Ok(SessionControl::Stop),
