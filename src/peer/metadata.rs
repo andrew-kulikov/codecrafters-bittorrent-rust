@@ -1,6 +1,6 @@
 use anyhow::{bail, Context};
 use serde::{Deserialize, Serialize};
-use serde_bencode::{de::Deserializer, value::Value};
+use serde_bencode::de::Deserializer;
 use std::collections::HashSet;
 use std::io::Cursor;
 
@@ -116,12 +116,9 @@ impl MetadataFetcher {
                 Ok(_) => {
                     let metainfo = match &self.metadata_bytes {
                         Some(bytes) => {
-                            let v: Value = serde_bencode::from_bytes(bytes)?;
-                            log::debug("MetadataFetcher", &format!("Parsed metainfo: {:?}", v));
-                            log::debug("MetadataFetcher", &format!("Source bytes: {:?}", bytes));
                             let metainfo =
                                 TorrentMetainfo::from_info_bytes(tracker_url.clone(), bytes)?;
-                            
+
                             if metainfo.info_hash != info_hash {
                                 bail!("Downloaded metadata info hash does not match expected info hash");
                             }
@@ -150,7 +147,7 @@ impl MetadataFetcher {
         bail!("No peers responded with extension handshake");
     }
 
-    fn request_metadata_piece(&self, conn: &PeerConnection, piece: u64) -> anyhow::Result<()> {
+    fn request_metadata_piece(&mut self, conn: &PeerConnection, piece: u64) -> anyhow::Result<()> {
         let metadata_ext_id = self
             .peer_metadata_id
             .context("Missing metadata extension id from handshake")?;
@@ -166,6 +163,9 @@ impl MetadataFetcher {
             ext_id: metadata_ext_id,
             payload,
         })?;
+
+        self.requested_pieces.insert(piece);
+
         Ok(())
     }
 
@@ -179,7 +179,6 @@ impl MetadataFetcher {
                 continue;
             }
             self.request_metadata_piece(conn, piece)?;
-            self.requested_pieces.insert(piece);
         }
         Ok(())
     }
@@ -311,6 +310,11 @@ impl PeerSessionHandler for MetadataFetcher {
                     self.peer_metadata_id = Some(metadata_ext_id);
                 }
 
+                // Terminate for magnet_handshake test
+                if self.handshake_only {
+                    return Ok(SessionControl::Stop);
+                }
+
                 let metadata_size = ext_payload
                     .metadata_size
                     .context("Metadata size was not received on extended handshake")?;
@@ -325,15 +329,8 @@ impl PeerSessionHandler for MetadataFetcher {
                     ),
                 );
 
-                // Terminate for magnet_handshake test
-                match self.handshake_only {
-                    true => Ok(SessionControl::Stop),
-                    false => {
-                        self.request_metadata_piece(conn, 0)?;
-                        self.requested_pieces.insert(0);
-                        Ok(SessionControl::Continue)
-                    }
-                }
+                self.request_metadata_piece(conn, 0)?;
+                Ok(SessionControl::Continue)
             }
             PeerEvent::Extended {
                 ext_id: MY_METADATA_EXTENSION_MESSAGE_ID,
