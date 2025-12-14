@@ -73,4 +73,13 @@ impl ExtensionHandshakePayload {
             client_name,
         })
     }
+
+    pub fn get_metadata_extension_id(&self) -> Option<u8> {
+        for (name, ext_id) in &self.extensions {
+            if name == METADATA_EXTENSION_NAME {
+                return Some(*ext_id);
+            }
+        }
+        None
+    }
 }
