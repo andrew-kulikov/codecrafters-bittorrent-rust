@@ -1,10 +1,10 @@
 use codecrafters_bittorrent::{
     bencode,
     download::{manager::DownloadManager, queue::PieceQueue, worker::PeerWorker},
-    peer::{metadata::MetadataFetcher, HandshakeRequest, PeerConnection},
+    peer::{HandshakeRequest, PeerConnection, PeerSessionConfig, metadata::MetadataFetcher},
     torrent::{MagnetLink, TorrentMetainfo},
     tracker::{self, Peer},
-    utils::{log, RawBytesExt},
+    utils::{RawBytesExt, log},
 };
 use std::env;
 use std::sync::Arc;
@@ -165,12 +165,13 @@ fn download_piece_with_metainfo(
         let queue = Arc::new(PieceQueue::new(&vec![piece_index]));
 
         // 4. Start worker
-        let mut worker = PeerWorker::with_defaults(
+        let mut worker = PeerWorker::new(
             peer,
             meta.clone(),
             queue,
             PEER_ID.to_string(),
             output_dir.to_string(),
+            PeerSessionConfig::aggressive(),
         );
 
         match worker.run() {

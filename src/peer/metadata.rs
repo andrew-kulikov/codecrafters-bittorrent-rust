@@ -109,7 +109,7 @@ impl MetadataFetcher {
                 peer.clone(),
                 info_hash.clone(),
                 self.client_id.clone(),
-                PeerSessionConfig::default(),
+                PeerSessionConfig::aggressive(),
             );
 
             match session.run(self) {

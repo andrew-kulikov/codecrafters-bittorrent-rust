@@ -2,6 +2,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::thread;
 
+use crate::peer::PeerSessionConfig;
 use crate::torrent::TorrentMetainfo;
 use crate::tracker;
 use crate::utils::log;
@@ -65,12 +66,13 @@ impl DownloadManager {
             let output_dir = temp_dir.clone();
 
             let handle = thread::spawn(move || {
-                let mut worker = PeerWorker::with_defaults(
+                let mut worker = PeerWorker::new(
                     peer,
                     metainfo,
                     queue,
                     client_id,
                     output_dir.to_str().unwrap().to_string(),
+                    PeerSessionConfig::default(),
                 );
                 if let Err(e) = worker.run() {
                     log::error("DownloadManager", &format!("Worker failed: {}", e));

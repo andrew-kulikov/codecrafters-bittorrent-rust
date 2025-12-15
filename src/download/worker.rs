@@ -49,23 +49,6 @@ impl PeerWorker {
         }
     }
 
-    pub fn with_defaults(
-        peer: Peer,
-        metainfo: Arc<TorrentMetainfo>,
-        queue: Arc<PieceQueue>,
-        client_id: String,
-        output_dir: String,
-    ) -> Self {
-        Self::new(
-            peer,
-            metainfo,
-            queue,
-            client_id,
-            output_dir,
-            PeerSessionConfig::default(),
-        )
-    }
-
     pub fn run(&mut self) -> anyhow::Result<()> {
         let session = PeerSession::new(
             self.peer.clone(),

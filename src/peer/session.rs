@@ -41,18 +41,26 @@ pub trait PeerSessionHandler {
 /// Configuration for peer session retries.
 #[derive(Clone, Debug)]
 pub struct PeerSessionConfig {
-    pub backoff_base_secs: u64,
-    pub backoff_cap_secs: u64,
+    pub backoff_base_secs: f32,
+    pub backoff_cap_secs: f32,
     pub max_retries: u8,
 }
 
-impl Default for PeerSessionConfig {
-    fn default() -> Self {
+impl PeerSessionConfig {
+    pub fn default() -> Self {
         // Using more aggressive backoff for faster testing cycles.
         Self {
-            backoff_base_secs: 1,
-            backoff_cap_secs: 3,
+            backoff_base_secs: 1.0,
+            backoff_cap_secs: 3.0,
             max_retries: 2,
+        }
+    }
+
+    pub fn aggressive() -> Self {
+        Self {
+            backoff_base_secs: 0.5,
+            backoff_cap_secs: 1.0,
+            max_retries: 1,
         }
     }
 }
@@ -167,8 +175,8 @@ impl PeerSession {
     }
 
     fn backoff_delay(&self, attempts: u32) -> Duration {
-        let base = Duration::from_secs(self.config.backoff_base_secs.max(1));
-        let cap = Duration::from_secs(
+        let base = Duration::from_secs_f32(self.config.backoff_base_secs);
+        let cap = Duration::from_secs_f32(
             self.config
                 .backoff_cap_secs
                 .max(self.config.backoff_base_secs),
