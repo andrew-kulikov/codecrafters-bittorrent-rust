@@ -123,7 +123,10 @@ impl MetadataFetcher {
                                 bail!("Downloaded metadata info hash does not match expected info hash");
                             }
 
-                            log::debug("MetadataFetcher", &format!("Info hash verified: {}", metainfo.get_info_hash_hex()));
+                            log::debug(
+                                "MetadataFetcher",
+                                &format!("Info hash verified: {}", metainfo.get_info_hash_hex()),
+                            );
 
                             Some(metainfo)
                         }

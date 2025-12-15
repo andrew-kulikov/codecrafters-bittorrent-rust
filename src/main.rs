@@ -6,8 +6,8 @@ use codecrafters_bittorrent::{
     tracker::{self, Peer},
     utils::{log, RawBytesExt},
 };
-use std::sync::Arc;
 use std::env;
+use std::sync::Arc;
 
 const PEER_ID: &str = "-CT0001-123456789012";
 
@@ -133,7 +133,11 @@ fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index:
     download_piece_with_metainfo(metainfo, output_file_path, piece_index);
 }
 
-fn download_piece_with_metainfo(matainfo: TorrentMetainfo, output_file_path: &str, piece_index: u32) {
+fn download_piece_with_metainfo(
+    matainfo: TorrentMetainfo,
+    output_file_path: &str,
+    piece_index: u32,
+) {
     let meta = Arc::new(matainfo);
 
     // 2. Announce to tracker and get peers
@@ -153,24 +157,27 @@ fn download_piece_with_metainfo(matainfo: TorrentMetainfo, output_file_path: &st
         tracker_response.peers
     };
 
-    // 3. Setup queue seeded with the desired piece
-    let queue = Arc::new(PieceQueue::new(&vec![piece_index]));
-
-    // 4. Start worker
-    let peer = peers.first().expect("No peers available").clone();
-
     // Use current directory as temp output
     let output_dir = ".";
 
-    let mut worker = PeerWorker::with_defaults(
-        peer,
-        meta.clone(),
-        queue,
-        PEER_ID.to_string(),
-        output_dir.to_string(),
-    );
+    for peer in peers {
+        // 3. Setup queue seeded with the desired piece
+        let queue = Arc::new(PieceQueue::new(&vec![piece_index]));
 
-    worker.run().expect("Worker failed");
+        // 4. Start worker
+        let mut worker = PeerWorker::with_defaults(
+            peer,
+            meta.clone(),
+            queue,
+            PEER_ID.to_string(),
+            output_dir.to_string(),
+        );
+
+        match worker.run() {
+            Ok(_) => break,
+            Err(_) => continue,
+        }
+    }
 
     // 5. Move/Rename file to desired output
     let temp_path = format!("piece_{}", piece_index);
@@ -243,12 +250,16 @@ fn magnet_info(link: &str) {
 
 /// magnet links | task 7: Download a piece
 fn download_magnet_piece(link: &str, piece_index: u32, output_file_path: &str) {
-    let mut metadata_fetcher = MetadataFetcher::new(link, PEER_ID.to_string(), false)
-        .expect("Failed to create metadata fetcher");
-    let result = metadata_fetcher.run().expect("Metadata fetcher failed");
-    let metainfo = result
-        .metainfo
-        .expect("Failed to retrieve metadata from peer");
+    let metainfo = {
+        let mut metadata_fetcher = MetadataFetcher::new(link, PEER_ID.to_string(), false)
+            .expect("Failed to create metadata fetcher");
+        let result = metadata_fetcher.run().expect("Metadata fetcher failed");
+        result
+            .metainfo
+            .expect("Failed to retrieve metadata from peer")
+    };
+
+    print_metainfo(&metainfo);
 
     // Download the desired piece (reusing existing function from task 10)
     download_piece_with_metainfo(metainfo, output_file_path, piece_index);

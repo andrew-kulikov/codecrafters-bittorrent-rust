@@ -21,18 +21,10 @@ pub struct TrackerResponse {
     pub peers: Vec<Peer>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Peer {
     pub ip: Ipv4Addr,
     pub port: u16,
-}
-
-impl Clone for Peer {
-    fn clone(&self) -> Self {
-        Peer {
-            ip: self.ip,
-            port: self.port,
-        }
-    }
 }
 
 impl FromStr for Peer {
@@ -61,10 +53,7 @@ impl std::fmt::Display for Peer {
     }
 }
 
-pub fn announce(
-    announce_url: String,
-    request: TrackerRequest,
-) -> anyhow::Result<TrackerResponse> {
+pub fn announce(announce_url: String, request: TrackerRequest) -> anyhow::Result<TrackerResponse> {
     let url = format!(
         "{}?info_hash={}&peer_id={}&port={}&uploaded={}&downloaded={}&left={}&compact={}",
         announce_url,

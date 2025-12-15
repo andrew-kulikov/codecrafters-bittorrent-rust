@@ -1,8 +1,10 @@
 use std::time::Duration;
 
+use anyhow::bail;
+
 use crate::peer::{HandshakeRequest, PeerConnection};
 use crate::tracker::Peer;
-use crate::utils::{RawBytesExt, log};
+use crate::utils::{log, RawBytesExt};
 
 /// How the session loop should proceed after handling an event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,13 +43,16 @@ pub trait PeerSessionHandler {
 pub struct PeerSessionConfig {
     pub backoff_base_secs: u64,
     pub backoff_cap_secs: u64,
+    pub max_retries: u8,
 }
 
 impl Default for PeerSessionConfig {
     fn default() -> Self {
+        // Using more aggressive backoff for faster testing cycles.
         Self {
-            backoff_base_secs: 3,
-            backoff_cap_secs: 30,
+            backoff_base_secs: 1,
+            backoff_cap_secs: 3,
+            max_retries: 2,
         }
     }
 }
@@ -62,7 +67,12 @@ pub struct PeerSession {
 }
 
 impl PeerSession {
-    pub fn new(peer: Peer, info_hash: Vec<u8>, client_id: String, config: PeerSessionConfig) -> Self {
+    pub fn new(
+        peer: Peer,
+        info_hash: Vec<u8>,
+        client_id: String,
+        config: PeerSessionConfig,
+    ) -> Self {
         Self {
             peer,
             info_hash,
@@ -75,10 +85,22 @@ impl PeerSession {
         let mut attempts = 0u32;
 
         while !handler.should_stop() {
-            log::debug(
+            if self.config.max_retries > 0 && attempts >= self.config.max_retries as u32 {
+                log::info(
+                    "PeerSession",
+                    &format!(
+                        "[{}] Reached max retries ({}), stopping session",
+                        self.peer, self.config.max_retries
+                    ),
+                );
+                bail!("Max retries reached for peer {}", self.peer)
+            }
+
+            log::info(
                 "PeerSession",
                 &format!("[{}] Connecting (attempt {})", self.peer, attempts + 1),
             );
+
             let handshake_req = HandshakeRequest::new_with_extension_support(
                 self.info_hash.clone(),
                 self.client_id.to_raw_bytes(),
@@ -86,11 +108,11 @@ impl PeerSession {
 
             let connection = match PeerConnection::new(self.peer.clone(), &handshake_req) {
                 Ok(conn) => {
-                    attempts = 0;
+                    //attempts = 0;
                     conn
                 }
                 Err(e) => {
-                    log::debug(
+                    log::error(
                         "PeerSession",
                         &format!("[{}] Failed to connect: {}", self.peer, e),
                     );

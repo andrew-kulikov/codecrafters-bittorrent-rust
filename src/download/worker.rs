@@ -172,9 +172,7 @@ impl PeerWorker {
                 .take()
                 .expect("active download should exist when finishing piece");
 
-            let expected = self
-                .metainfo
-                .get_piece_hash_bytes(finished.index as usize);
+            let expected = self.metainfo.get_piece_hash_bytes(finished.index as usize);
             let actual = hash::sha1(&finished.buffer);
             if expected != actual.as_slice() {
                 self.queue.push(finished.index);
@@ -202,7 +200,6 @@ impl PeerWorker {
         }
     }
 
-    
     fn log(&self, message: &str) {
         log::debug("PeerWorker", &format!("[{}] {}", self.peer, message));
     }
@@ -244,8 +241,9 @@ impl PeerSessionHandler for PeerWorker {
                     Ok(SessionControl::Continue)
                 }
             }
-            PeerEvent::Piece { index, begin, data } =>
-                self.handle_piece_event(conn, index, begin, data),
+            PeerEvent::Piece { index, begin, data } => {
+                self.handle_piece_event(conn, index, begin, data)
+            }
             PeerEvent::IoError(err) => {
                 self.log(&format!("I/O error from peer: {}; reconnecting", err));
                 self.abandon_active_piece();
