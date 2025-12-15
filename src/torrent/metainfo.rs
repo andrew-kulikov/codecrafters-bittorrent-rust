@@ -70,6 +70,21 @@ impl TorrentMetainfo {
         })
     }
 
+    pub fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        let metainfo_serde = TorrentMetainfoSerde {
+            announce: self.announce.clone(),
+            info: InfoDictionary {
+                piece_length: self.piece_length,
+                pieces: self.pieces.clone(),
+                length: Some(self.length),
+                files: None,
+                name: None,
+            },
+        };
+
+        Ok(serde_bencode::to_bytes(&metainfo_serde)?)
+    }
+
     pub fn get_info_hash_hex(&self) -> String {
         hex::encode(&self.info_hash)
     }

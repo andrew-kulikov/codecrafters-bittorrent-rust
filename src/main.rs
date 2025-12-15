@@ -6,8 +6,8 @@ use codecrafters_bittorrent::{
     tracker::{self, Peer},
     utils::{log, RawBytesExt},
 };
-use std::env;
 use std::sync::Arc;
+use std::{env, fs::File, io::Write};
 
 const PEER_ID: &str = "-CT0001-123456789012";
 
@@ -51,6 +51,13 @@ fn main() {
     } else if command == "magnet_info" {
         // magnet_info <magnet link>
         magnet_info(&args[2]);
+    } else if command == "magnet_download_piece" {
+        // magnet_download_piece -o <output file> <magnet link> <piece index>
+        download_magnet_piece(
+            args[4].as_str(),
+            args[5].parse().expect("Invalid piece index"),
+            &args[3],
+        );
     } else {
         println!("unknown command: {}", args[1])
     }
@@ -225,4 +232,29 @@ fn magnet_info(link: &str) {
     if let Some(metainfo) = result.metainfo {
         print_metainfo(&metainfo);
     }
+}
+
+/// magnet links | task 7: Download a piece
+fn download_magnet_piece(link: &str, piece_index: u32, output_file_path: &str) {
+    let mut metadata_fetcher = MetadataFetcher::new(link, PEER_ID.to_string(), false)
+        .expect("Failed to create metadata fetcher");
+    let result = metadata_fetcher.run().expect("Metadata fetcher failed");
+    let metainfo = result
+        .metainfo
+        .expect("Failed to retrieve metadata from peer");
+
+    // Save metainfo to file
+    let temp_metainfo_path = "temp_metainfo.torrent";
+    let metainfo_bytes = &metainfo.to_bytes().expect("Failed to encode metainfo");
+    let mut temp_metainfo_file =
+        File::create(temp_metainfo_path).expect("Failed to create temp metainfo file");
+    temp_metainfo_file
+        .write_all(metainfo_bytes)
+        .expect("Failed to write metainfo to file");
+
+    // Download the desired piece (reusing existing function from task 10)
+    download_piece(output_file_path, temp_metainfo_path, piece_index);
+
+    // Clean up temp metainfo file
+    std::fs::remove_file(temp_metainfo_path).expect("Failed to remove temp metainfo file");
 }
