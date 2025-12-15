@@ -127,7 +127,14 @@ fn peer_handshake(metainfo_file_path: &str, peer: Peer) {
 /// task 10: Download a piece
 fn download_piece(output_file_path: &str, metainfo_file_path: &str, piece_index: u32) {
     // 1. Parse metainfo file
-    let meta = Arc::new(TorrentMetainfo::parse(metainfo_file_path).unwrap());
+    let metainfo = TorrentMetainfo::parse(metainfo_file_path).unwrap();
+
+    // Download the piece
+    download_piece_with_metainfo(metainfo, output_file_path, piece_index);
+}
+
+fn download_piece_with_metainfo(matainfo: TorrentMetainfo, output_file_path: &str, piece_index: u32) {
+    let meta = Arc::new(matainfo);
 
     // 2. Announce to tracker and get peers
     let peers = {
@@ -243,18 +250,6 @@ fn download_magnet_piece(link: &str, piece_index: u32, output_file_path: &str) {
         .metainfo
         .expect("Failed to retrieve metadata from peer");
 
-    // Save metainfo to file
-    let temp_metainfo_path = "temp_metainfo.torrent";
-    let metainfo_bytes = &metainfo.to_bytes().expect("Failed to encode metainfo");
-    let mut temp_metainfo_file =
-        File::create(temp_metainfo_path).expect("Failed to create temp metainfo file");
-    temp_metainfo_file
-        .write_all(metainfo_bytes)
-        .expect("Failed to write metainfo to file");
-
     // Download the desired piece (reusing existing function from task 10)
-    download_piece(output_file_path, temp_metainfo_path, piece_index);
-
-    // Clean up temp metainfo file
-    std::fs::remove_file(temp_metainfo_path).expect("Failed to remove temp metainfo file");
+    download_piece_with_metainfo(metainfo, output_file_path, piece_index);
 }
