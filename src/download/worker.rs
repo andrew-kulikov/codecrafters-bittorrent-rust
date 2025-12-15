@@ -247,8 +247,9 @@ impl PeerSessionHandler for PeerWorker {
             PeerEvent::Piece { index, begin, data } =>
                 self.handle_piece_event(conn, index, begin, data),
             PeerEvent::IoError(err) => {
+                self.log(&format!("I/O error from peer: {}; reconnecting", err));
                 self.abandon_active_piece();
-                Err(anyhow!(err))
+                Ok(SessionControl::Reconnect)
             }
             _ => {
                 // For now ignore other events; future: handle bitfield/have/extended.

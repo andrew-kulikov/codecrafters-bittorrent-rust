@@ -7,7 +7,7 @@ use codecrafters_bittorrent::{
     utils::{log, RawBytesExt},
 };
 use std::sync::Arc;
-use std::{env, fs::File, io::Write};
+use std::env;
 
 const PEER_ID: &str = "-CT0001-123456789012";
 
