@@ -1,10 +1,10 @@
 use codecrafters_bittorrent::{
     bencode,
     download::{manager::DownloadManager, queue::PieceQueue, worker::PeerWorker},
-    peer::{HandshakeRequest, PeerConnection, PeerSessionConfig, metadata::MetadataFetcher},
+    peer::{metadata::MetadataFetcher, HandshakeRequest, PeerConnection, PeerSessionConfig},
     torrent::{MagnetLink, TorrentMetainfo},
     tracker::{self, Peer},
-    utils::{RawBytesExt, log},
+    utils::{log, RawBytesExt},
 };
 use std::env;
 use std::sync::Arc;
@@ -54,10 +54,13 @@ fn main() {
     } else if command == "magnet_download_piece" {
         // magnet_download_piece -o <output file> <magnet link> <piece index>
         download_magnet_piece(
+            &args[3],
             args[4].as_str(),
             args[5].parse().expect("Invalid piece index"),
-            &args[3],
         );
+    } else if command == "magnet_download" {
+        // magnet_download -o <output file> <magnet link>
+        download_magnet_file(&args[3], &args[4]);
     } else {
         println!("unknown command: {}", args[1])
     }
@@ -250,7 +253,7 @@ fn magnet_info(link: &str) {
 }
 
 /// magnet links | task 7: Download a piece
-fn download_magnet_piece(link: &str, piece_index: u32, output_file_path: &str) {
+fn download_magnet_piece(output_file_path: &str, link: &str, piece_index: u32) {
     let metainfo = {
         let mut metadata_fetcher = MetadataFetcher::new(link, PEER_ID.to_string(), false)
             .expect("Failed to create metadata fetcher");
@@ -264,4 +267,22 @@ fn download_magnet_piece(link: &str, piece_index: u32, output_file_path: &str) {
 
     // Download the desired piece (reusing existing function from task 10)
     download_piece_with_metainfo(metainfo, output_file_path, piece_index);
+}
+
+/// magnet links | task 8: Download the whole file
+fn download_magnet_file(output_file_path: &str, link: &str) -> () {
+    let metainfo = {
+        let mut metadata_fetcher = MetadataFetcher::new(link, PEER_ID.to_string(), false)
+            .expect("Failed to create metadata fetcher");
+        let result = metadata_fetcher.run().expect("Metadata fetcher failed");
+        result
+            .metainfo
+            .expect("Failed to retrieve metadata from peer")
+    };
+
+    print_metainfo(&metainfo);
+
+    let client_id = PEER_ID.to_string();
+    let manager = DownloadManager::new(metainfo, client_id, output_file_path.to_string());
+    manager.download().expect("Download failed");
 }
