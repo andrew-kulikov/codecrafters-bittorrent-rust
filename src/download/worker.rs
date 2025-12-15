@@ -5,8 +5,8 @@ use anyhow::anyhow;
 
 use super::queue::PieceQueue;
 use crate::peer::{
-    PeerCommand, PeerConnection, PeerEvent, PeerSession,
-    PeerSessionConfig, PeerSessionHandler, SessionControl,
+    PeerCommand, PeerConnection, PeerEvent, PeerSession, PeerSessionConfig, PeerSessionHandler,
+    SessionControl,
 };
 use crate::torrent::TorrentMetainfo;
 use crate::tracker::Peer;

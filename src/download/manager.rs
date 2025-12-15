@@ -44,7 +44,10 @@ impl DownloadManager {
         log::info("DownloadManager", &format!("Found {} peers", peers.len()));
 
         let num_pieces = self.metainfo.get_piece_count() as u64;
-        log::info("DownloadManager", &format!("Total pieces to download: {}", num_pieces));
+        log::info(
+            "DownloadManager",
+            &format!("Total pieces to download: {}", num_pieces),
+        );
 
         let piece_ids = (0..num_pieces as u32).collect::<Vec<u32>>();
         let queue = Arc::new(PieceQueue::new(&piece_ids));

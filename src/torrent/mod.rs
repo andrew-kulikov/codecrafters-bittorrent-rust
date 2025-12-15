@@ -1,5 +1,5 @@
-mod metainfo;
 mod magnet;
+mod metainfo;
 
-pub use metainfo::TorrentMetainfo;
 pub use magnet::MagnetLink;
+pub use metainfo::TorrentMetainfo;

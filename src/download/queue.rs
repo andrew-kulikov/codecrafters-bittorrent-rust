@@ -1,5 +1,5 @@
-use std::sync::{Mutex, Condvar};
 use std::collections::VecDeque;
+use std::sync::{Condvar, Mutex};
 
 #[derive(Debug)]
 pub struct PieceQueue {
@@ -50,7 +50,11 @@ impl PieceQueue {
 
     pub fn mark_completed(&self) {
         let mut completed = self.completed_pieces.lock().unwrap();
-        println!("[Queue] Completed pieces: {}/{}", *completed + 1, self.total_pieces);
+        println!(
+            "[Queue] Completed pieces: {}/{}",
+            *completed + 1,
+            self.total_pieces
+        );
         *completed += 1;
         if *completed == self.total_pieces {
             self.shutdown();
@@ -66,7 +70,7 @@ impl PieceQueue {
     pub fn is_shutdown(&self) -> bool {
         *self.finished.lock().unwrap()
     }
-    
+
     pub fn wait_until_finished(&self) {
         let mut finished = self.finished.lock().unwrap();
         while !*finished {

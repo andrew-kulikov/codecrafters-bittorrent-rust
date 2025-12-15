@@ -1,15 +1,9 @@
 pub mod bytes;
-pub mod url;
 pub mod hash;
 pub mod log;
+pub mod url;
 
 pub use bytes::{RawBytesExt, RawStringExt};
-pub use url::{url_encode};
 pub use hash::sha1;
-pub use log::{
-    ConsoleLogger,
-    LogHandler,
-    LogLevel,
-    set_global_log_handler,
-    set_global_log_level,
-};
+pub use log::{set_global_log_handler, set_global_log_level, ConsoleLogger, LogHandler, LogLevel};
+pub use url::url_encode;

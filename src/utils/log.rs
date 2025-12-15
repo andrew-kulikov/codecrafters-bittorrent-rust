@@ -1,7 +1,6 @@
 use std::sync::{
     atomic::{AtomicU8, Ordering},
-    Mutex,
-    OnceLock,
+    Mutex, OnceLock,
 };
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]

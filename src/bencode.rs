@@ -30,7 +30,9 @@ pub fn encode(data: &serde_json::Value) -> anyhow::Result<Vec<u8>> {
             if let Some(n) = num.as_i64() {
                 Ok(format!("i{}e", n).into_bytes())
             } else {
-                Err(anyhow::anyhow!("Only integer numbers are supported in bencode"))
+                Err(anyhow::anyhow!(
+                    "Only integer numbers are supported in bencode"
+                ))
             }
         }
         serde_json::Value::String(s) => {
