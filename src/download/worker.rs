@@ -1,5 +1,7 @@
 use std::cmp::min;
-use std::sync::Arc;
+use std::fs::File;
+use std::io::{Seek, SeekFrom, Write};
+use std::sync::{Arc, Mutex};
 
 use anyhow::anyhow;
 
@@ -18,7 +20,7 @@ pub struct PeerWorker {
     metainfo: Arc<TorrentMetainfo>,
     queue: Arc<PieceQueue>,
     client_id: String,
-    output_dir: String,
+    output_file: Arc<Mutex<File>>,
     config: PeerSessionConfig,
     active_download: Option<DownloadState>,
 }
@@ -36,7 +38,7 @@ impl PeerWorker {
         metainfo: Arc<TorrentMetainfo>,
         queue: Arc<PieceQueue>,
         client_id: String,
-        output_dir: String,
+        output_file: Arc<Mutex<File>>,
         config: PeerSessionConfig,
     ) -> Self {
         Self {
@@ -44,7 +46,7 @@ impl PeerWorker {
             metainfo,
             queue,
             client_id,
-            output_dir,
+            output_file,
             config,
             active_download: None,
         }
@@ -62,8 +64,10 @@ impl PeerWorker {
     }
 
     fn persist_piece(&self, piece_index: u32, data: &[u8]) -> anyhow::Result<()> {
-        let path = std::path::Path::new(&self.output_dir).join(format!("piece_{}", piece_index));
-        std::fs::write(path, data)?;
+        let offset = piece_index as u64 * self.metainfo.piece_length;
+        let mut file = self.output_file.lock().unwrap();
+        file.seek(SeekFrom::Start(offset))?;
+        file.write_all(data)?;
         Ok(())
     }
 

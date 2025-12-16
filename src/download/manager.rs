@@ -1,5 +1,5 @@
-use std::io::Write;
-use std::sync::Arc;
+use std::fs::OpenOptions;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use super::queue::PieceQueue;
@@ -52,12 +52,14 @@ impl DownloadManager {
         let piece_ids = (0..num_pieces as u32).collect::<Vec<u32>>();
         let queue = Arc::new(PieceQueue::new(&piece_ids));
 
-        // Create a temporary directory for pieces
-        let temp_dir = std::path::Path::new(&self.output_path)
-            .parent()
-            .unwrap()
-            .join("temp");
-        std::fs::create_dir_all(&temp_dir)?;
+        let mut output_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .read(true)
+            .truncate(true)
+            .open(&self.output_path)?;
+        output_file.set_len(self.metainfo.length)?;
+        let shared_file = Arc::new(Mutex::new(output_file));
 
         let mut handles = vec![];
 
@@ -66,7 +68,7 @@ impl DownloadManager {
             let metainfo = self.metainfo.clone();
             let queue = queue.clone();
             let client_id = self.client_id.clone();
-            let output_dir = temp_dir.clone();
+            let file = shared_file.clone();
 
             let handle = thread::spawn(move || {
                 let mut worker = PeerWorker::new(
@@ -74,7 +76,7 @@ impl DownloadManager {
                     metainfo,
                     queue,
                     client_id,
-                    output_dir.to_str().unwrap().to_string(),
+                    file,
                     PeerSessionConfig::default(),
                 );
                 if let Err(e) = worker.run() {
@@ -84,19 +86,12 @@ impl DownloadManager {
             handles.push(handle);
         }
 
-        // Wait for all pieces to be downloaded
+        // Wait for all pieces to be downloaded and persisted
         queue.wait_until_finished();
 
-        // Combine pieces
-        let mut output_file = std::fs::File::create(&self.output_path)?;
-        for i in 0..num_pieces {
-            let piece_path = std::path::Path::new(&temp_dir).join(format!("piece_{}", i));
-            let piece_data = std::fs::read(&piece_path)?;
-            output_file.write_all(&piece_data)?;
+        for handle in handles {
+            let _ = handle.join();
         }
-
-        // Cleanup
-        std::fs::remove_dir_all(temp_dir)?;
 
         Ok(())
     }

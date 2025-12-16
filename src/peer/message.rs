@@ -23,7 +23,7 @@ pub struct PeerMessage {
 }
 
 pub struct HandshakeRequest {
-    pub pstr: String,
+    pub pstr: &'static str,
     pub reserved: [u8; 8],
     pub info_hash: Vec<u8>,
     pub peer_id: Vec<u8>,
@@ -39,7 +39,7 @@ pub struct HandshakeResponse {
 impl HandshakeRequest {
     pub fn new(info_hash: Vec<u8>, peer_id: Vec<u8>) -> Self {
         Self {
-            pstr: "BitTorrent protocol".to_string(),
+            pstr: "BitTorrent protocol",
             reserved: [0u8; 8],
             info_hash,
             peer_id,
@@ -48,7 +48,7 @@ impl HandshakeRequest {
 
     pub fn new_with_extension_support(info_hash: Vec<u8>, peer_id: Vec<u8>) -> Self {
         Self {
-            pstr: "BitTorrent protocol".to_string(),
+            pstr: "BitTorrent protocol",
             reserved: get_reserved_extension_support_bytes(),
             info_hash,
             peer_id,
@@ -59,7 +59,7 @@ impl HandshakeRequest {
         // BitTorrent handshake format:
         // <pstrlen><pstr><reserved><info_hash><peer_id>
         // pstr typically "BitTorrent protocol"
-        let pstr_bytes = self.pstr.to_raw_bytes();
+        let pstr_bytes = self.pstr.as_bytes();
         if pstr_bytes.len() > u8::MAX as usize {
             anyhow::bail!("pstr too long");
         }

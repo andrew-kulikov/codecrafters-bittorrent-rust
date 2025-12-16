@@ -7,7 +7,8 @@ use codecrafters_bittorrent::{
     utils::{log, RawBytesExt},
 };
 use std::env;
-use std::sync::Arc;
+use std::fs::OpenOptions;
+use std::sync::{Arc, Mutex};
 
 const PEER_ID: &str = "-CT0001-123456789012";
 
@@ -160,20 +161,34 @@ fn download_piece_with_metainfo(
         tracker_response.peers
     };
 
-    // Use current directory as temp output
-    let output_dir = ".";
-
     for peer in peers {
         // 3. Setup queue seeded with the desired piece
         let queue = Arc::new(PieceQueue::new(&vec![piece_index]));
+
+        let offset = piece_index as u64 * meta.piece_length;
+        let piece_len = meta
+            .length
+            .saturating_sub(offset)
+            .min(meta.piece_length);
+        let mut output_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .read(true)
+            .truncate(true)
+            .open(output_file_path)
+            .expect("Failed to create output file");
+        output_file
+            .set_len(offset + piece_len)
+            .expect("Failed to size output file");
+        let shared_file = Arc::new(Mutex::new(output_file));
 
         // 4. Start worker
         let mut worker = PeerWorker::new(
             peer,
             meta.clone(),
-            queue,
+            queue.clone(),
             PEER_ID.to_string(),
-            output_dir.to_string(),
+            shared_file,
             PeerSessionConfig::aggressive(),
         );
 
@@ -182,10 +197,6 @@ fn download_piece_with_metainfo(
             Err(_) => continue,
         }
     }
-
-    // 5. Move/Rename file to desired output
-    let temp_path = format!("piece_{}", piece_index);
-    std::fs::rename(temp_path, output_file_path).expect("Failed to rename output file");
 }
 
 /// task 11: Download the whole file
