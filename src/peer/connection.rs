@@ -10,7 +10,8 @@ use anyhow::ensure;
 
 use super::message::{has_extension_support, HandshakeRequest, PeerMessageType};
 use crate::tracker::Peer;
-use crate::utils::{log, RawStringExt};
+use crate::log_debug;
+use crate::utils::RawStringExt;
 
 /// Events produced by the reader thread for a peer connection.
 #[derive(Debug)]
@@ -100,13 +101,13 @@ pub struct PeerConnection {
 
 impl PeerConnection {
     pub fn new(addr: Peer, req: &HandshakeRequest) -> anyhow::Result<PeerConnection> {
-        log::debug("PeerConnection", &format!("Connecting to {}", addr));
+        log_debug!("PeerConnection", "Connecting to {}", addr);
         let mut stream = TcpStream::connect(addr.clone())?;
         stream.set_read_timeout(Some(Duration::from_secs(60)))?;
         stream.set_write_timeout(Some(Duration::from_secs(30)))?;
 
         // Handshake format: <pstrlen><pstr><reserved><info_hash><peer_id>
-        log::debug("PeerConnection", "Sending handshake request");
+        log_debug!("PeerConnection", "Sending handshake request");
         let payload = req.as_bytes()?;
         stream.write_all(&payload)?;
 
@@ -135,12 +136,11 @@ impl PeerConnection {
         );
 
         let supports_ext = has_extension_support(&reserved);
-        log::debug(
+        log_debug!(
             "PeerConnection",
-            &format!(
-                "Handshake successful with peer {} (extensions: {})",
-                addr, supports_ext
-            ),
+            "Handshake successful with peer {} (extensions: {})",
+            addr,
+            supports_ext
         );
 
         // Split stream into read and write halves to avoid mutex contention between reader and writer.
@@ -249,9 +249,10 @@ fn read_one_message(stream: &Arc<Mutex<TcpStream>>) -> anyhow::Result<PeerEvent>
     let mut length_buf = [0u8; 4];
     stream.read_exact(&mut length_buf)?;
     let length = u32::from_be_bytes(length_buf);
-    log::debug(
+    log_debug!(
         "PeerConnection",
-        &format!("Reading message of length {}", length),
+        "Reading message of length {}",
+        length
     );
 
     if length == 0 {
@@ -317,16 +318,17 @@ fn read_one_message(stream: &Arc<Mutex<TcpStream>>) -> anyhow::Result<PeerEvent>
         },
     };
 
-    log::debug(
+    log_debug!(
         "PeerConnection",
-        &format!("Received event: {}", evt.print_simple()),
+        "Received event: {}",
+        evt.print_simple()
     );
 
     Ok(evt)
 }
 
 fn write_one_message(stream: &Arc<Mutex<TcpStream>>, cmd: PeerCommand) -> anyhow::Result<()> {
-    log::debug("PeerConnection", &format!("Sending command: {:?}", cmd));
+    log_debug!("PeerConnection", "Sending command: {:?}", cmd);
     let mut stream = stream.lock().unwrap();
     match cmd {
         PeerCommand::KeepAlive => {

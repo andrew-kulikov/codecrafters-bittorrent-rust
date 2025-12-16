@@ -10,7 +10,8 @@ use crate::peer::{
 };
 use crate::torrent::TorrentMetainfo;
 use crate::tracker::Peer;
-use crate::utils::{hash, log};
+use crate::log_debug;
+use crate::utils::hash;
 
 pub struct PeerWorker {
     peer: Peer,
@@ -184,7 +185,7 @@ impl PeerWorker {
     }
 
     fn log(&self, message: &str) {
-        log::debug("PeerWorker", &format!("[{}] {}", self.peer, message));
+        log_debug!("PeerWorker", "[{}] {}", self.peer, message);
     }
 }
 

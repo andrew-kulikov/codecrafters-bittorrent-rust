@@ -2,13 +2,12 @@ use std::io::Write;
 use std::sync::Arc;
 use std::thread;
 
+use super::queue::PieceQueue;
+use super::worker::PeerWorker;
 use crate::peer::PeerSessionConfig;
 use crate::torrent::TorrentMetainfo;
 use crate::tracker;
-use crate::utils::log;
-
-use super::queue::PieceQueue;
-use super::worker::PeerWorker;
+use crate::{log_error, log_info};
 
 /// DownloadManager handles the overall download process of a torrent file.
 /// It manages peer connections, piece downloading, and file assembly.
@@ -41,12 +40,13 @@ impl DownloadManager {
 
         let tracker_response = tracker::announce(self.metainfo.announce.clone(), tracker_request)?;
         let peers = tracker_response.peers;
-        log::info("DownloadManager", &format!("Found {} peers", peers.len()));
+        log_info!("DownloadManager", "Found {} peers", peers.len());
 
         let num_pieces = self.metainfo.get_piece_count() as u64;
-        log::info(
+        log_info!(
             "DownloadManager",
-            &format!("Total pieces to download: {}", num_pieces),
+            "Total pieces to download: {}",
+            num_pieces
         );
 
         let piece_ids = (0..num_pieces as u32).collect::<Vec<u32>>();
@@ -78,7 +78,7 @@ impl DownloadManager {
                     PeerSessionConfig::default(),
                 );
                 if let Err(e) = worker.run() {
-                    log::error("DownloadManager", &format!("Worker failed: {}", e));
+                    log_error!("DownloadManager", "Worker failed: {}", e);
                 }
             });
             handles.push(handle);

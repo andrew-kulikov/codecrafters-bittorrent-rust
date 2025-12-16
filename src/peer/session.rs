@@ -2,9 +2,11 @@ use std::time::Duration;
 
 use anyhow::bail;
 
+use crate::log_error;
+use crate::log_info;
 use crate::peer::{HandshakeRequest, PeerConnection};
 use crate::tracker::Peer;
-use crate::utils::{log, RawBytesExt};
+use crate::utils::RawBytesExt;
 
 /// How the session loop should proceed after handling an event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,19 +96,20 @@ impl PeerSession {
 
         while !handler.should_stop() {
             if self.config.max_retries > 0 && attempts >= self.config.max_retries as u32 {
-                log::info(
+                log_info!(
                     "PeerSession",
-                    &format!(
-                        "[{}] Reached max retries ({}), stopping session",
-                        self.peer, self.config.max_retries
-                    ),
+                    "[{}] Reached max retries ({}), stopping session",
+                    self.peer,
+                    self.config.max_retries
                 );
                 bail!("Max retries reached for peer {}", self.peer)
             }
 
-            log::info(
+            log_info!(
                 "PeerSession",
-                &format!("[{}] Connecting (attempt {})", self.peer, attempts + 1),
+                "[{}] Connecting (attempt {})",
+                self.peer,
+                attempts + 1
             );
 
             let handshake_req = HandshakeRequest::new_with_extension_support(
@@ -116,13 +119,14 @@ impl PeerSession {
 
             let connection = match PeerConnection::new(self.peer.clone(), &handshake_req) {
                 Ok(conn) => {
-                    //attempts = 0;
                     conn
                 }
                 Err(e) => {
-                    log::error(
+                    log_error!(
                         "PeerSession",
-                        &format!("[{}] Failed to connect: {}", self.peer, e),
+                        "[{}] Failed to connect: {}",
+                        self.peer,
+                        e
                     );
                     attempts += 1;
                     std::thread::sleep(self.backoff_delay(attempts));

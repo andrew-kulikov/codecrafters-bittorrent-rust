@@ -11,7 +11,7 @@ use crate::{
     },
     torrent::{MagnetLink, TorrentMetainfo},
     tracker,
-    utils::log,
+    log_debug, log_error,
 };
 
 const METADATA_EXTENSION_NAME: &str = "ut_metadata";
@@ -123,9 +123,10 @@ impl MetadataFetcher {
                                 bail!("Downloaded metadata info hash does not match expected info hash");
                             }
 
-                            log::debug(
+                            log_debug!(
                                 "MetadataFetcher",
-                                &format!("Info hash verified: {}", metainfo.get_info_hash_hex()),
+                                "Info hash verified: {}",
+                                metainfo.get_info_hash_hex()
                             );
 
                             Some(metainfo)
@@ -140,10 +141,7 @@ impl MetadataFetcher {
                     });
                 }
                 Err(e) => {
-                    log::error(
-                        "MetadataFetcher",
-                        &format!("[{}] Session error: {:#}", peer, e),
-                    );
+                    log_error!("MetadataFetcher", "[{}] Session error: {:#}", peer, e);
                     continue;
                 }
             }
@@ -326,12 +324,11 @@ impl PeerSessionHandler for MetadataFetcher {
                 self.total_size = Some(metadata_size as usize);
                 self.metadata_bytes = Some(vec![0u8; metadata_size as usize]);
 
-                log::debug(
+                log_debug!(
                     "MetadataFetcher",
-                    &format!(
-                        "Received extension handshake. id: {:?}, metadata size: {} bytes",
-                        self.peer_metadata_id, metadata_size
-                    ),
+                    "Received extension handshake. id: {:?}, metadata size: {} bytes",
+                    self.peer_metadata_id,
+                    metadata_size
                 );
 
                 self.request_metadata_piece(conn, 0)?;

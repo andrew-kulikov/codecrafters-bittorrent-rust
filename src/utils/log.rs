@@ -107,3 +107,31 @@ pub fn warn(name: &str, msg: &str) {
 pub fn error(name: &str, msg: &str) {
     log(LogLevel::Error, name, msg);
 }
+
+#[macro_export]
+macro_rules! log_debug {
+    ($target:expr, $($arg:tt)*) => {
+        $crate::utils::log::log($crate::utils::log::LogLevel::Debug, $target, &format!($($arg)*))
+    };
+}
+
+#[macro_export]
+macro_rules! log_info {
+    ($target:expr, $($arg:tt)*) => {
+        $crate::utils::log::log($crate::utils::log::LogLevel::Info, $target, &format!($($arg)*))
+    };
+}
+
+#[macro_export]
+macro_rules! log_warn {
+    ($target:expr, $($arg:tt)*) => {
+        $crate::utils::log::log($crate::utils::log::LogLevel::Warning, $target, &format!($($arg)*))
+    };
+}
+
+#[macro_export]
+macro_rules! log_error {
+    ($target:expr, $($arg:tt)*) => {
+        $crate::utils::log::log($crate::utils::log::LogLevel::Error, $target, &format!($($arg)*))
+    };
+}
