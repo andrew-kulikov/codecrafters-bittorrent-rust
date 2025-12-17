@@ -21,6 +21,7 @@ pub struct PeerWorker {
     queue: Arc<PieceQueue>,
     client_id: String,
     output_file: Arc<Mutex<File>>,
+    base_piece_index: u32,
     config: PeerSessionConfig,
     active_download: Option<DownloadState>,
 }
@@ -39,6 +40,7 @@ impl PeerWorker {
         queue: Arc<PieceQueue>,
         client_id: String,
         output_file: Arc<Mutex<File>>,
+        base_piece_index: u32,
         config: PeerSessionConfig,
     ) -> Self {
         Self {
@@ -47,6 +49,7 @@ impl PeerWorker {
             queue,
             client_id,
             output_file,
+            base_piece_index,
             config,
             active_download: None,
         }
@@ -64,7 +67,10 @@ impl PeerWorker {
     }
 
     fn persist_piece(&self, piece_index: u32, data: &[u8]) -> anyhow::Result<()> {
-        let offset = piece_index as u64 * self.metainfo.piece_length;
+        let offset_index = piece_index
+            .checked_sub(self.base_piece_index)
+            .unwrap_or(0) as u64;
+        let offset = offset_index * self.metainfo.piece_length;
         let mut file = self.output_file.lock().unwrap();
         file.seek(SeekFrom::Start(offset))?;
         file.write_all(data)?;

@@ -170,7 +170,7 @@ fn download_piece_with_metainfo(
             .length
             .saturating_sub(offset)
             .min(meta.piece_length);
-        let mut output_file = OpenOptions::new()
+        let output_file = OpenOptions::new()
             .create(true)
             .write(true)
             .read(true)
@@ -178,7 +178,7 @@ fn download_piece_with_metainfo(
             .open(output_file_path)
             .expect("Failed to create output file");
         output_file
-            .set_len(offset + piece_len)
+            .set_len(piece_len)
             .expect("Failed to size output file");
         let shared_file = Arc::new(Mutex::new(output_file));
 
@@ -189,6 +189,7 @@ fn download_piece_with_metainfo(
             queue.clone(),
             PEER_ID.to_string(),
             shared_file,
+            piece_index,
             PeerSessionConfig::aggressive(),
         );
 

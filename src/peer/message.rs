@@ -1,5 +1,3 @@
-use crate::utils::RawBytesExt;
-
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum PeerMessageType {
     KeepAlive = -1,

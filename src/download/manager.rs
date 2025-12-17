@@ -52,7 +52,7 @@ impl DownloadManager {
         let piece_ids = (0..num_pieces as u32).collect::<Vec<u32>>();
         let queue = Arc::new(PieceQueue::new(&piece_ids));
 
-        let mut output_file = OpenOptions::new()
+        let output_file = OpenOptions::new()
             .create(true)
             .write(true)
             .read(true)
@@ -77,6 +77,7 @@ impl DownloadManager {
                     queue,
                     client_id,
                     file,
+                    0,
                     PeerSessionConfig::default(),
                 );
                 if let Err(e) = worker.run() {
